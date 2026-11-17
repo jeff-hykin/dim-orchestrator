@@ -1,6 +1,7 @@
 // The state machine drawn as SVG: nested nodes, transitions and fallbacks as edges, the active nodes lit, and every
 // transition the engine takes played along its edge.
 
+import { namesFor } from "./details.js"
 import { edgeSegments, HEADER, layoutGraph, segmentsPath } from "./layout.js"
 
 const SVG = "http://www.w3.org/2000/svg"
@@ -16,8 +17,15 @@ const svg = (tag, attrs = {}, parent) => {
 // a dot is a rect whose corners follow the theme's --radius-round (square on a sharp skin)
 const dot = (cx, cy, r, className, parent) => svg("rect", { x: cx - r, y: cy - r, width: 2 * r, height: 2 * r, rx: r, class: `dot ${className}` }, parent)
 
-// theme colors a container can wear (--primary is left for the active state, --danger for faults)
-const HUES = ["--cat-2", "--cat-3", "--cat-4", "--accent-alt", "--info"]
+// container colors: blends of the skin's own colors, kept apart from the kind colors (vars, signals, ...), --primary
+// (the active state) and --danger (faults)
+const HUES = [
+    "color-mix(in oklch, var(--info) 55%, var(--ok))",
+    "color-mix(in oklch, var(--accent-alt) 55%, var(--danger))",
+    "color-mix(in oklch, var(--warn) 50%, var(--danger))",
+    "color-mix(in oklch, var(--info) 50%, var(--accent-alt))",
+    "color-mix(in oklch, var(--ok) 50%, var(--warn))",
+]
 
 const short = (text, length = 26) => (text.length > length ? `${text.slice(0, length - 1)}…` : text)
 
@@ -177,7 +185,7 @@ export class GraphView {
             dot(cx, rect.y + 13, 6, `final-core final-${node.outcome}`, group)
             svg("text", { x: cx, y: rect.y + 37, class: "final-label", "text-anchor": "middle" }, group).textContent = node.outcome
         } else if (node.kind === "compound" || node.kind === "parallel") {
-            group.style.setProperty("--hue", `var(${HUES[this.hues.get(node.id)]})`)
+            group.style.setProperty("--hue", HUES[this.hues.get(node.id)])
             svg("rect", { x: rect.x, y: rect.y, width: rect.w, height: rect.h, class: "box compound-box" }, group)
             svg("rect", { x: rect.x, y: rect.y, width: rect.w, height: HEADER, class: "compound-head" }, group)
             svg("text", { x: rect.x + 14, y: rect.y + 20, class: "node-name" }, group).textContent = node.id
@@ -247,7 +255,7 @@ export class GraphView {
             labelGroup = svg("g", { class: `edge-label edge-label-${edge.kind}${immediate ? " edge-label-immediate" : ""}`, "data-id": edge.id }, labelLayer)
             const background = svg("rect", { class: "edge-label-bg" }, labelGroup)
             const text = svg("text", { x: mid.x, y: mid.y + 4, "text-anchor": "middle" }, labelGroup)
-            text.textContent = (immediate ? "⚡ " : "") + label + (Object.keys(edge.transition?.set ?? {}).length ? " ✎" : "")
+            this.colorNames(text, (immediate ? "⚡ " : "") + label + (Object.keys(edge.transition?.set ?? {}).length ? " ✎" : ""))
             const w = text.getComputedTextLength() || text.textContent.length * 6.4
             for (const [key, value] of Object.entries({ x: mid.x - w / 2 - 7, y: mid.y - 9, width: w + 14, height: 18 })) {
                 background.setAttribute(key, value)
@@ -268,6 +276,23 @@ export class GraphView {
             })
         }
         this.edgeEls.set(edge.id, { group, path, label: labelGroup })
+    }
+
+    /** Write a label's text, with each blackboard name in it drawn in its kind's color (as in the blackboard). */
+    colorNames(text, content) {
+        const names = namesFor(this.model, {})
+        let at = 0
+        for (const match of content.matchAll(/[A-Za-z_][\w.]*/g)) {
+            const parts = match[0].split(".")
+            const name = parts.map((_, i) => parts.slice(0, parts.length - i).join(".")).find((prefix) => names.known.has(prefix))
+            if (!name) {
+                continue
+            }
+            text.append(content.slice(at, match.index))
+            svg("tspan", { class: `lbl-${names.kindOf(name)}` }, text).textContent = match[0]
+            at = match.index + match[0].length
+        }
+        text.append(content.slice(at))
     }
 
     /**

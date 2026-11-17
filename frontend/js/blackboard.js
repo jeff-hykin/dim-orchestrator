@@ -52,6 +52,7 @@ export class BlackboardPanel {
         for (const [name, event] of model.events) {
             this.addRow("events", name, event)
         }
+        GROUPS.forEach(([id]) => this.updateCount(id))
     }
 
     toggle(id) {
