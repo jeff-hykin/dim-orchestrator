@@ -160,7 +160,8 @@ document.addEventListener("pointerout", (event) => {
 })
 document.addEventListener("click", (event) => {
     const pill = event.target.closest?.(".pill[data-key]")
-    if (pill && app.model) {
+    // a blackboard row's own pills open the row instead
+    if (pill && app.model && !pill.closest(".bb-line")) {
         event.stopPropagation()
         app.pinned = { type: "value", id: pill.dataset.key }
         pillTip?.remove()

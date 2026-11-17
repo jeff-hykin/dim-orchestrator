@@ -2,7 +2,7 @@
 // step changed flashing, and links to whatever writes each key.
 
 import { renderCel } from "./cel.js"
-import { h, namesFor, publisherOf, renderJson } from "./details.js"
+import { h, namesFor, publisherOf, renderJson, renderJsonLine } from "./details.js"
 import { groupOf } from "./model.js"
 
 const GROUPS = [
@@ -24,6 +24,7 @@ export class BlackboardPanel {
         this.handlers = handlers
         this.rows = new Map()
         this.collapsed = new Set(["constants"])
+        this.expanded = new Set()
         this.editable = false
     }
 
@@ -65,9 +66,12 @@ export class BlackboardPanel {
         }
     }
 
+    // A row is one fixed-height line (key and a one-line preview) until it is clicked; expanded, it adds a fixed-height,
+    // scrolling box with the full value and what writes the key, so live updates never change the panel's layout.
     addRow(group, key, event) {
         const model = this.model
-        const value = h("div", { class: "bb-value" })
+        const preview = h("div", { class: "bb-preview" })
+        const full = h("div", { class: "bb-full" })
         const links = h("div", { class: "bb-links" })
         const signal = model.signals.get(key)
         if (signal) {
@@ -75,30 +79,62 @@ export class BlackboardPanel {
         }
         if (model.results.has(key)) {
             const nodes = model.results.get(key)
-            links.append(h("button", { class: "bb-link", type: "button", onclick: () => this.handlers.onPick([], nodes) }, "⟵ ", nodes.join(", ")))
+            links.append(h("button", { class: "bb-link", type: "button", onclick: () => this.handlers.onPick([], nodes) }, "⟵ result of ", nodes.join(", ")))
         }
         if (model.setters.has(key)) {
             const edges = model.setters.get(key)
             links.append(h("button", { class: "bb-link", type: "button", onclick: () => this.handlers.onPick(edges, []) }, `⟵ set by ${edges.length} transition${edges.length > 1 ? "s" : ""}`))
         }
         const editButton = group === "signals" || group === "vars"
-            ? h("button", { class: "bb-edit", type: "button", title: `set ${key}`, onclick: () => this.edit(key) }, "✎")
+            ? h("button", { class: "bb-edit", type: "button", title: `set ${key}`, onclick: (click) => {
+                click.stopPropagation()
+                this.edit(key)
+            } }, "✎")
             : null
         const names = namesFor(model, {})
-        const element = h(
+        const line = h(
             "div",
-            { class: "bb-row", "data-key": key },
-            h("div", { class: "bb-key" }, h("span", { class: `pill pill-${names.kindOf(key)}`, "data-key": key }, key), editButton),
-            value,
-            links,
+            { class: "bb-line", onclick: () => this.toggleRow(key) },
+            h("span", { class: "bb-row-caret" }, "▸"),
+            h("span", { class: "bb-key" }, h("span", { class: `pill pill-${names.kindOf(key)}`, "data-key": key }, key)),
+            preview,
+            editButton,
         )
+        const element = h("div", { class: "bb-row", "data-key": key }, line, h("div", { class: "bb-detail" }, links, full))
         if (event) {
-            value.append(renderCel(event.when, namesFor(model, {})))
+            preview.append(renderCel(event.when, names))
+            full.append(renderCel(event.when, names))
         }
         this.sections.get(group).body.append(element)
-        this.rows.set(key, { element, value, group, last: undefined })
+        const row = { element, preview, full, group, last: undefined, value: undefined }
+        this.rows.set(key, row)
+        element.classList.toggle("expanded", this.expanded.has(key))
         this.updateCount(group)
-        return this.rows.get(key)
+        return row
+    }
+
+    toggleRow(key) {
+        const row = this.rows.get(key)
+        if (!row || row.editing) {
+            return
+        }
+        const open = !this.expanded.has(key)
+        if (open) {
+            this.expanded.add(key)
+        } else {
+            this.expanded.delete(key)
+        }
+        row.element.classList.toggle("expanded", open)
+        this.drawFull(row)
+    }
+
+    /** The full value, drawn only while the row is open. */
+    drawFull(row) {
+        if (row.group === "events" || !row.element.classList.contains("expanded") || row.drawn === row.last) {
+            return
+        }
+        row.drawn = row.last
+        row.full.replaceChildren(row.last == null ? h("span", { class: "j-null" }, "unset") : h("pre", { class: "bb-json" }, renderJson(row.value)))
     }
 
     updateCount(group) {
@@ -129,15 +165,19 @@ export class BlackboardPanel {
             const text = JSON.stringify(value)
             if (row.last !== text) {
                 row.last = text
-                row.value.replaceChildren(h("pre", { class: "bb-json" }, renderJson(value)))
+                row.value = value
+                row.preview.replaceChildren(renderJsonLine(value))
+                this.drawFull(row)
             }
             row.element.classList.remove("unset")
         }
         for (const [key, row] of this.rows) {
-            if (row.group !== "events" && !(key in step.blackboard) && !row.editing) {
+            if (row.group !== "events" && !(key in step.blackboard) && !row.editing && row.last !== null) {
                 row.element.classList.add("unset")
-                row.last = undefined
-                row.value.replaceChildren(h("span", { class: "j-null" }, "unset"))
+                row.last = null // drawn as unset (undefined: not drawn yet)
+                row.value = undefined
+                row.preview.replaceChildren(h("span", { class: "j-null" }, "unset"))
+                this.drawFull(row)
             }
         }
         if (flash) {
@@ -184,6 +224,7 @@ export class BlackboardPanel {
         const done = () => {
             row.editing = false
             row.last = undefined
+            row.drawn = undefined
             this.show(this.step, false, this.modules)
         }
         const submit = async () => {
@@ -208,7 +249,7 @@ export class BlackboardPanel {
             }
         })
         const send = h("button", { class: "bb-send", type: "button", onclick: submit }, "set")
-        row.value.replaceChildren(h("div", { class: "bb-editor" }, input, send))
+        row.preview.replaceChildren(h("div", { class: "bb-editor", onclick: (click) => click.stopPropagation() }, input, send))
         input.focus()
         input.select()
     }

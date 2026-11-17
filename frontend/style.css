@@ -734,30 +734,77 @@ svg.graph.picking .edge:not(.picked) .edge-line {
 }
 
 .bb-row {
-    display: grid;
-    grid-template-columns: minmax(90px, 38%) 1fr;
-    gap: 1px 10px;
-    padding: 4px 12px 4px 28px;
-    align-items: baseline;
+    padding: 0 12px 0 14px;
 }
 
-.bb-row:hover {
+/* the collapsed row: one line, always the same height */
+.bb-line {
+    display: grid;
+    grid-template-columns: 12px minmax(80px, 36%) minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    height: 28px;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    padding: 0 4px;
+}
+
+.bb-line:hover {
     background: var(--hover);
 }
 
-.bb-row.unset .bb-value {
-    opacity: 0.6;
+.bb-row-caret {
+    font-size: 9px;
+    color: var(--muted-fg);
+    transition: transform 0.15s;
+}
+
+.bb-row.expanded .bb-row-caret {
+    transform: rotate(90deg);
 }
 
 .bb-key {
     display: flex;
-    align-items: center;
-    gap: 4px;
     min-width: 0;
 }
 
-.bb-value {
+.bb-preview {
     min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-family: var(--mono);
+    font-size: 11.5px;
+}
+
+.bb-preview .pill {
+    line-height: 1.3;
+}
+
+.bb-row.unset .bb-preview {
+    opacity: 0.6;
+}
+
+/* the expanded row: a fixed-height box that scrolls, so live updates never move what is below it */
+.bb-detail {
+    display: none;
+    height: 120px;
+    overflow: auto;
+    overscroll-behavior: contain;
+    margin: 2px 0 6px 24px;
+    padding: 6px 8px;
+    border-left: 2px solid var(--kind, var(--border-strong));
+    background: var(--input-bg);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.bb-row.expanded .bb-detail {
+    display: block;
+}
+
+.bb-full {
+    font-size: 11.5px;
+    line-height: 1.6;
 }
 
 .bb-json,
@@ -771,7 +818,7 @@ svg.graph.picking .edge:not(.picked) .edge-line {
 }
 
 .bb-links {
-    grid-column: 1 / -1;
+    margin-bottom: 4px;
     display: flex;
     flex-wrap: wrap;
     gap: 4px 10px;
@@ -1357,8 +1404,8 @@ span.bb-link {
         height: 30px;
     }
 
-    .bb-row {
-        grid-template-columns: minmax(80px, 40%) 1fr;
+    .bb-line {
+        height: 34px;
     }
 
     .bb-edit {

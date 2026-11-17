@@ -56,6 +56,40 @@ export function renderJson(value, indent = 0) {
     return h("span", {}, ...out)
 }
 
+/** A value on one line (colored), cut off with "…" once about `budget` characters are drawn, so a huge value stays cheap. */
+export function renderJsonLine(value, budget = 160) {
+    let left = budget
+    const walk = (item) => {
+        if (left <= 0) {
+            return []
+        }
+        if (item === null || typeof item !== "object") {
+            left -= JSON.stringify(item ?? null)?.length ?? 4
+            return [renderJson(item)]
+        }
+        const isArray = Array.isArray(item)
+        const entries = isArray ? item.map((one, index) => [index, one]) : Object.entries(item)
+        const parts = [h("span", { class: "j-punct" }, isArray ? "[" : "{ ")]
+        for (const [index, [key, one]] of entries.entries()) {
+            if (left <= 0) {
+                parts.push(h("span", { class: "j-punct" }, "…"))
+                return parts
+            }
+            if (!isArray) {
+                left -= String(key).length + 2
+                parts.push(h("span", { class: "j-key" }, key), h("span", { class: "j-punct" }, ": "))
+            }
+            parts.push(...walk(one))
+            if (index < entries.length - 1) {
+                parts.push(h("span", { class: "j-punct" }, ", "))
+            }
+        }
+        parts.push(h("span", { class: "j-punct" }, isArray ? "]" : " }"))
+        return parts
+    }
+    return h("span", {}, ...walk(value))
+}
+
 function inline(value) {
     if (value === null || typeof value !== "object") {
         return [renderJson(value)]
