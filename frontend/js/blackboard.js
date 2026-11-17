@@ -112,7 +112,8 @@ export class BlackboardPanel {
             this.handlers.onPick([], [node])
         } }, h("span", { class: "bb-src-node" }, node))))
         list("set by", (model.setters.get(key) ?? []).map(transition))
-        list("read by", usersOf(model, key).map(transition))
+        const users = usersOf(model, key)
+        sources.append(h("div", { class: "bb-src-title" }, "Transitions"), ...(users.length ? users.map(transition) : [h("span", { class: "bb-src-none" }, "None")]))
         const editButton = group === "signals" || group === "vars"
             ? h("button", { class: "bb-edit", type: "button", title: `set ${key}`, onclick: (click) => {
                 click.stopPropagation()

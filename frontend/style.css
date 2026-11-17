@@ -817,12 +817,6 @@ svg.graph.picking .edge:not(.picked) .edge-line {
     min-width: 0;
 }
 
-.bb-sources:empty::before {
-    content: "nothing writes or reads it";
-    color: var(--muted-fg);
-    font-size: 10.5px;
-}
-
 .bb-src-title {
     margin-top: 4px;
     font-size: 9.5px;
@@ -839,6 +833,7 @@ svg.graph.picking .edge:not(.picked) .edge-line {
     display: flex;
     flex-direction: column;
     max-width: 100%;
+    margin-bottom: 4px;
     background: none;
     border: none;
     padding: 1px 0;
@@ -853,8 +848,24 @@ code.bb-src {
     cursor: default;
 }
 
+/* a transition: its own small box */
+button.bb-src {
+    align-self: stretch;
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+}
+
 button.bb-src:hover {
-    text-decoration: underline;
+    border-color: var(--border-strong);
+    background: var(--hover);
+}
+
+.bb-src-none {
+    font-size: 11px;
+    color: var(--muted-fg);
+    font-style: italic;
 }
 
 .bb-src-line,
@@ -868,7 +879,6 @@ button.bb-src:hover {
 .bb-src-when {
     font-size: 10px;
     color: var(--muted-fg);
-    margin-bottom: 2px;
 }
 
 .bb-src-node {
