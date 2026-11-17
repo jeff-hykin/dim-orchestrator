@@ -2,11 +2,11 @@
 // transition the engine takes played along its edge.
 
 import { namesFor } from "./details.js"
-import { boundaryPoint, edgeSegments, flowPath, HEADER, layoutGraph, PAD, segmentsPath } from "./layout.js"
+import { boundaryPoint, edgeShape, HEADER, layoutGraph, PAD, segmentsPath } from "./layout.js"
 import { layoutElk } from "./layout_elk.js"
 
 // how the graph is laid out and its edges drawn: our own nested layout with curves, or ELK with one of its routings
-export const LAYOUT_STYLES = { curves: "Curves (current)", flow: "dimos-react flow", "elk-orthogonal": "ELK: right angles", "elk-splines": "ELK: splines", "elk-polyline": "ELK: straight segments" }
+export const LAYOUT_STYLES = { curves: "Curves", arcs: "Arcs", "elk-polyline": "Corners", "elk-splines": "Splines" }
 
 const SVG = "http://www.w3.org/2000/svg"
 const svg = (tag, attrs = {}, parent) => {
@@ -154,7 +154,7 @@ export class GraphView {
         const measure = (node) => this.measure(node)
         let layout
         try {
-            layout = this.style === "curves" || this.style === "flow" ? layoutGraph(model, measure, labelWidth, aspect) : await layoutElk(model, measure, labelWidth, this.style, aspect)
+            layout = this.style === "curves" || this.style === "arcs" ? layoutGraph(model, measure, labelWidth, aspect, this.style === "arcs") : await layoutElk(model, measure, labelWidth, this.style, aspect)
         } catch (error) {
             console.warn(`${this.style} layout failed, using curves:`, error)
             layout = layoutGraph(model, measure, labelWidth, aspect)
@@ -205,9 +205,7 @@ export class GraphView {
 
     drawNode(layer, node, rect) {
         const group = svg("g", { class: `node node-${node.kind}`, "data-id": node.id }, layer)
-        if (node.kind === "start") {
-            dot(rect.x + 7, rect.y + 7, 6, "start-dot", group)
-        } else if (node.kind === "final") {
+        if (node.kind === "final") {
             const cx = rect.x + rect.w / 2
             dot(cx, rect.y + 13, 11, `final-ring final-${node.outcome}`, group)
             dot(cx, rect.y + 13, 6, `final-core final-${node.outcome}`, group)
@@ -287,12 +285,8 @@ export class GraphView {
             if (!from || !to) {
                 return
             }
-            const bends = this.layout.routes.get(edge.id) ?? []
-            const backward = bends.length === 0 && (this.layout.vertical.get(edge.id) ? to.y + to.h <= from.y : to.x + to.w <= from.x)
-            // a back edge with no bends has no track to run along: it keeps the plain curve
-            d = this.style === "flow" && edge.from !== edge.to && !backward
-                ? flowPath(from, to, bends, this.layout.vertical.get(edge.id) ?? false)
-                : segmentsPath(edgeSegments(this.model, edge, from, to, bends, this.labelWidth))
+            const vertical = this.style === "arcs" ? (this.layout.vertical.get(edge.id) ?? false) : null
+            d = segmentsPath(edgeShape(this.model, edge, from, to, this.layout.routes.get(edge.id) ?? [], this.labelWidth, vertical))
         }
         const immediate = edge.transition?.mode === "immediate"
         const cls = ["edge", `edge-${edge.kind}`, immediate ? "edge-immediate" : ""].join(" ")
@@ -470,11 +464,12 @@ export class GraphView {
         // edge labels and loops can reach past the root's box, so fit what was actually drawn
         const drawn = this.world.getBBox()
         const margin = 16
-        const k = Math.min(2, (box.width - margin * 2) / Math.max(1, drawn.width), (box.height - margin * 2) / Math.max(1, drawn.height))
+        const bottom = 52 // the edge-style setting sits in the bottom-left corner
+        const k = Math.min(2, (box.width - margin * 2) / Math.max(1, drawn.width), (box.height - margin - bottom) / Math.max(1, drawn.height))
         this.view = {
             k,
             x: (box.width - drawn.width * k) / 2 - drawn.x * k,
-            y: (box.height - drawn.height * k) / 2 - drawn.y * k,
+            y: margin + (box.height - margin - bottom - drawn.height * k) / 2 - drawn.y * k,
         }
         this.apply()
     }

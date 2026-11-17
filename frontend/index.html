@@ -16,7 +16,6 @@
             <button id="show-yaml" class="btn" type="button" aria-pressed="false" title="the orchestrator's file, as YAML">{ }<span class="wide-only"> YAML</span></button>
             <span class="spacer"></span>
             <span class="rewound-tag">rewound</span>
-            <select id="layout-style" class="picker" aria-label="layout" title="how the graph is laid out and its edges drawn"></select>
             <button id="fit" class="btn" type="button" title="fit the graph">⤢</button>
             <button id="toggle-panel" class="btn" type="button" aria-pressed="true" title="show or hide the blackboard">▤<span class="wide-only"> Blackboard</span></button>
         </header>
@@ -27,6 +26,7 @@
                     <div id="empty-detail" class="empty-detail">Start a blueprint with an Orchestrator module, e.g.</div>
                     <code class="empty-cmd">dimos run orchestration-demo-patrol</code>
                 </div>
+                <label class="layout-setting" title="how the graph is laid out and its edges drawn">Edges <select id="layout-style" class="picker"></select></label>
                 <div id="fault" class="fault-banner" hidden>⚠ The orchestrator faulted and stopped. Hover the last step for why.</div>
             </div>
             <aside id="blackboard" class="panel" aria-label="blackboard">

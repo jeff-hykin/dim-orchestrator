@@ -12,14 +12,14 @@ export const HEADER = 30
  * @param {(edge: import("./model.js").GraphEdge) => number} labelWidth how wide an edge's label is
  * @returns {{ rects: Map<string, {x: number, y: number, w: number, h: number}>, routes: Map<string, {x: number, y: number}[]>, width: number, height: number }}
  */
-export function layoutGraph(model, measure, labelWidth = () => 0, aspect = 1.6) {
+export function layoutGraph(model, measure, labelWidth = () => 0, aspect = 1.6, arcs = false) {
     // Inner nodes aim for one shape (square, wide or tall); keep whichever lets the whole graph fill the screen most.
-    const tries = [1, 2.5, 0.5].map((innerAspect) => layoutWith(model, measure, labelWidth, aspect, innerAspect))
+    const tries = [1, 2.5, 0.5].map((innerAspect) => layoutWith(model, measure, labelWidth, aspect, innerAspect, arcs))
     const fill = (found) => Math.min(aspect / found.width, 1 / found.height)
     return tries.reduce((best, found) => (fill(found) > fill(best) * 1.02 ? found : best))
 }
 
-function layoutWith(model, measure, labelWidth, aspect, innerAspect) {
+function layoutWith(model, measure, labelWidth, aspect, innerAspect, arcs) {
     const local = new Map() // id -> { w, h, place: Map<childId, {x, y}> (centres, content-relative), routes }
     const childOf = (compound, id) => {
         let at = id
@@ -48,7 +48,8 @@ function layoutWith(model, measure, labelWidth, aspect, innerAspect) {
         if (node.kind !== "compound" && node.kind !== "parallel") {
             return measure(node)
         }
-        // a container's start is drawn as an arrow from its corner, so it takes no room
+        // a container's start is drawn as an arrow from its top-left corner, which needs a little room there
+        const corner = node.def?.initial ? 12 : 0
         const boxes = node.inside.filter((child) => model.nodes.get(child)?.kind !== "start").map((child) => ({ id: child, ...size(child) }))
         const links = []
         const linkEdges = []
@@ -91,7 +92,8 @@ function layoutWith(model, measure, labelWidth, aspect, innerAspect) {
                 if (!from || !to) {
                     continue
                 }
-                const { points, mid } = sampleSegments(edgeSegments(model, edge, from, to, placement.routes.get(linkEdges.indexOf(edge.id)) ?? [], labelWidth))
+                const bends = placement.routes.get(linkEdges.indexOf(edge.id)) ?? []
+                const { points, mid } = sampleSegments(edgeShape(model, edge, from, to, bends, labelWidth, arcs ? placement === down : null))
                 points.forEach((point) => grow({ ...point, w: 0, h: 0 }))
                 grow(labelBox(mid, labelWidth(edge)))
             }
@@ -106,14 +108,14 @@ function layoutWith(model, measure, labelWidth, aspect, innerAspect) {
         }
         const placement = misfit(down) < misfit(across) ? down : across
         let { x0: minX, y0: minY, x1: maxX, y1: maxY } = bounds(placement)
-        const shift = (point) => ({ x: point.x - minX + PAD, y: point.y - minY + PAD + HEADER })
+        const shift = (point) => ({ x: point.x - minX + PAD + corner, y: point.y - minY + PAD + HEADER + corner })
         const place = new Map(boxes.map((box) => [box.id, shift(placement.positions.get(box.id))]))
         const routes = new Map()
         linkEdges.forEach((edgeId, index) => routes.set(edgeId, (placement.routes.get(index) ?? []).map(shift)))
         const measured = measure(node)
         const result = {
-            w: Math.max(maxX - minX + PAD * 2, measured.w),
-            h: maxY - minY + PAD * 2 + HEADER,
+            w: Math.max(maxX - minX + PAD * 2 + corner, measured.w),
+            h: maxY - minY + PAD * 2 + HEADER + corner,
         }
         local.set(id, { ...result, place, routes, vertical: placement === down })
         return result
@@ -232,30 +234,47 @@ export function sampleSegments(segments, perSegment = 16) {
 export const labelBox = (mid, width) => ({ x: mid.x - width / 2, y: mid.y - 9, w: width, h: 18 })
 
 /**
- * dimos-react's flow edge (src/graph/paths.ts): out of the right side of `from` (bottom, when the container flows
- * down) and into the left side (top) of `to`, running along the track its layered bends give, curving at both ends.
+ * An edge's curve: dimos-react's arc when `vertical` is given (true or false: which way its container flows), else
+ * our smooth curve. A back edge with no bends has no track for an arc to run along, so it keeps the smooth curve.
  */
-export function flowPath(from, to, bends, vertical) {
+export function edgeShape(model, edge, from, to, bends, labelWidth, vertical = null) {
+    const backward = vertical ? to.y + to.h <= from.y : to.x + to.w <= from.x
+    const twins = model.edges.filter((other) => (other.from === edge.from && other.to === edge.to) || (other.from === edge.to && other.to === edge.from))
+    // twins with no bends would share one arc, so they keep the smooth curves, which spread them apart
+    if (vertical == null || edge.from === edge.to || (bends.length === 0 && (backward || twins.length > 1))) {
+        return edgeSegments(model, edge, from, to, bends, labelWidth)
+    }
+    return arcSegments(from, to, bends, vertical)
+}
+
+/**
+ * dimos-react's flow edge (src/graph/paths.ts) as cubic segments: out of the right side of `from` (bottom, when the
+ * container flows down) and into the left side (top) of `to`, along the track its layered bends give.
+ */
+function arcSegments(from, to, bends, vertical) {
     const uv = (p) => (vertical ? { u: p.y, v: p.x } : { u: p.x, v: p.y })
-    const xy = (u, v) => (vertical ? `${v.toFixed(1)} ${u.toFixed(1)}` : `${u.toFixed(1)} ${v.toFixed(1)}`)
+    const xy = (u, v) => (vertical ? { x: v, y: u } : { x: u, y: v })
     const a = uv(vertical ? { x: from.x + from.w / 2, y: from.y + from.h } : { x: from.x + from.w, y: from.y + from.h / 2 })
     const b = uv(vertical ? { x: to.x + to.w / 2, y: to.y } : { x: to.x, y: to.y + to.h / 2 })
+    const curve = (p0, p1, p2, p3) => [xy(...p0), xy(...p1), xy(...p2), xy(...p3)]
+    const line = (p, q) => curve(p, p, q, q)
     if (!bends.length) {
         const half = Math.max(Math.abs(b.u - a.u) / 2, 30)
-        return `M${xy(a.u, a.v)} C${xy(a.u + half, a.v)} ${xy(b.u - half, b.v)} ${xy(b.u, b.v)}`
+        return [curve([a.u, a.v], [a.u + half, a.v], [b.u - half, b.v], [b.u, b.v])]
     }
     const track = bends.map((p) => uv(p).v).sort((m, n) => m - n)[Math.floor(bends.length / 2)]
     const forward = b.u > a.u
     const r = Math.max(32, Math.min(110, forward ? Math.abs(b.u - a.u) / 3 : 80))
-    let d = `M${xy(a.u, a.v)}`
     if (forward) {
-        d += ` C${xy(a.u + r / 2, a.v)} ${xy(a.u + r / 2, track)} ${xy(a.u + r, track)}`
-        d += ` L${xy(b.u - r, track)}`
-        d += ` C${xy(b.u - r / 2, track)} ${xy(b.u - r / 2, b.v)} ${xy(b.u, b.v)}`
-    } else {
-        d += ` C${xy(a.u + r, a.v)} ${xy(a.u + r, track)} ${xy(a.u, track)}`
-        d += ` L${xy(b.u, track)}`
-        d += ` C${xy(b.u - r, track)} ${xy(b.u - r, b.v)} ${xy(b.u, b.v)}`
+        return [
+            curve([a.u, a.v], [a.u + r / 2, a.v], [a.u + r / 2, track], [a.u + r, track]),
+            line([a.u + r, track], [b.u - r, track]),
+            curve([b.u - r, track], [b.u - r / 2, track], [b.u - r / 2, b.v], [b.u, b.v]),
+        ]
     }
-    return d
+    return [
+        curve([a.u, a.v], [a.u + r, a.v], [a.u + r, track], [a.u, track]),
+        line([a.u, track], [b.u, track]),
+        curve([b.u, track], [b.u - r, track], [b.u - r, b.v], [b.u, b.v]),
+    ]
 }

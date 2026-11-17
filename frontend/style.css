@@ -292,10 +292,6 @@ svg.graph:active {
     font-family: var(--mono);
 }
 
-.start-dot {
-    fill: var(--muted-fg);
-}
-
 .final-ring {
     fill: none;
     stroke: var(--muted-fg);
@@ -363,10 +359,6 @@ svg.graph:active {
 .node.active > .compound-head {
     fill: var(--primary);
     fill-opacity: 0.16;
-}
-
-.node-start.active .start-dot {
-    fill: var(--primary);
 }
 
 .node-final.active .final-ring {
@@ -1546,6 +1538,23 @@ span.bb-link {
 .toast-danger {
     color: var(--danger);
     border-color: var(--danger-line, var(--danger));
+}
+
+/* the edge style setting, in the graph's bottom-left corner */
+.layout-setting {
+    position: absolute;
+    left: 12px;
+    bottom: calc(12px + var(--dim-inset-bottom, 0px));
+    z-index: 4;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 4px 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--muted-fg);
+    font-size: 11px;
 }
 
 /* ---------------------------------------------------------------- the TOML file, over the graph */

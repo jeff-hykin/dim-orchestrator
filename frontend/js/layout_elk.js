@@ -1,16 +1,16 @@
 // The graph laid out by ELK (Eclipse Layout Kernel, vendored in ../vendor/elk/), its layered algorithm across every
-// level at once: containers grow to hold their edges and labels, labels get their own space, and edges are routed
-// right-angled, as splines, or as straight segments. It runs in a worker.
+// level at once: containers grow to hold their edges and labels, labels get their own space, and edges are routed as
+// splines or as straight segments. It runs in a worker.
 
 import { ELK } from "../vendor/elk/elk-api.js"
 import { HEADER, PAD } from "./layout.js"
 
 const elk = new ELK({ workerUrl: new URL("../vendor/elk/elk-worker.min.js", import.meta.url).href })
 
-export const ELK_ROUTINGS = { "elk-orthogonal": "ORTHOGONAL", "elk-splines": "SPLINES", "elk-polyline": "POLYLINE" }
+export const ELK_ROUTINGS = { "elk-splines": "SPLINES", "elk-polyline": "POLYLINE" }
 
 /**
- * @param {"elk-orthogonal" | "elk-splines" | "elk-polyline"} style
+ * @param {"elk-splines" | "elk-polyline"} style
  * @returns {Promise<{ rects: Map<string, {x: number, y: number, w: number, h: number}>, paths: Map<string, { d: string, label: {x: number, y: number} | null }>, width: number, height: number }>}
  */
 export async function layoutElk(model, measure, labelWidth, style, aspect = 1.6) {
@@ -110,7 +110,7 @@ async function run(model, measure, labelWidth, style, direction) {
 
 const f = (point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`
 
-/** One ELK edge section as SVG: right angles with rounded corners, a chain of cubic Béziers, or straight segments. */
+/** One ELK edge section as SVG: a chain of cubic Béziers, or straight segments. */
 function sectionPath(section, style) {
     const points = [section.startPoint, ...(section.bendPoints ?? []), section.endPoint]
     if (style === "elk-splines" && (points.length - 1) % 3 === 0) {
@@ -119,18 +119,6 @@ function sectionPath(section, style) {
             d += ` C${f(points[i])} ${f(points[i + 1])} ${f(points[i + 2])}`
         }
         return d
-    }
-    if (style === "elk-orthogonal") {
-        const radius = 6
-        let d = `M${f(points[0])}`
-        for (let i = 1; i < points.length - 1; i++) {
-            const [a, b, c] = [points[i - 1], points[i], points[i + 1]]
-            const before = Math.min(radius, Math.hypot(b.x - a.x, b.y - a.y) / 2)
-            const after = Math.min(radius, Math.hypot(c.x - b.x, c.y - b.y) / 2)
-            const toward = (p, q, k) => ({ x: q.x + ((p.x - q.x) / (Math.hypot(p.x - q.x, p.y - q.y) || 1)) * k, y: q.y + ((p.y - q.y) / (Math.hypot(p.x - q.x, p.y - q.y) || 1)) * k })
-            d += ` L${f(toward(a, b, before))} Q${f(b)} ${f(toward(c, b, after))}`
-        }
-        return d + ` L${f(points.at(-1))}`
     }
     return `M${points.map(f).join(" L")}`
 }

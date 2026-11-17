@@ -16,7 +16,8 @@ which nodes are active, each transition as it fires, the blackboard, and a rewin
   - `layered.js`: dimos-react's layered layout, as JS. `layout.js`: the nested layout built on it (each compound lays
     out its inside left-to-right or top-to-bottom, whichever fits the screen better).
   - `layout_elk.js`: the same graph laid out by ELK (vendored in `frontend/vendor/elk/`, rebuilt by
-    `tools/build_elk.sh`), in a worker; the bar's layout picker chooses between it and `layout.js` while we compare.
+    `tools/build_elk.sh`), in a worker. The "Edges" setting (graph's bottom-left) picks Curves or Arcs (`layout.js`;
+    Arcs are dimos-react's flow edges) or Corners or Splines (ELK).
   - `graph.js`: the SVG, animation of fired edges and entered nodes, timers, pan/zoom/pinch.
   - `history.js`: every step seen, with the blackboard rebuilt at each one (the rewind store).
   - `blackboard.js`, `details.js`, `cel.js`, `timeline.js`: the right-hand table, hover/tap details, CEL highlighting
