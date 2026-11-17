@@ -139,6 +139,8 @@ export class BlackboardPanel {
         if (event) {
             preview.append(renderCel(event.when, names))
             full.append(renderCel(event.when, names))
+            // an event's condition takes the box's full width, with the transitions it drives below
+            element.classList.add("wide")
         }
         this.sections.get(group).body.append(element)
         const row = { element, preview, full, group, last: undefined, value: undefined }
