@@ -16,6 +16,12 @@ function usersOf(model, key) {
         .map((edge) => edge.id)
 }
 
+/** How many decimals a number shows (at most 4, as values are drawn elsewhere). */
+const decimals = (value) => (Number.isInteger(value) ? 0 : Math.min(4, String(+value.toFixed(4)).split(".")[1]?.length ?? 0))
+
+/** A row's number with as many decimals as the row has needed so far (0.3, 0.125, then 0.350, 0.300). */
+const steadyNumber = (row) => h("span", { class: "j-num" }, row.value.toFixed(row.digits ?? 0))
+
 const GROUPS = [
     ["signals", "Signals", "read from streams"],
     ["vars", "Vars", "written by transitions' `set`"],
@@ -165,7 +171,7 @@ export class BlackboardPanel {
         row.drawn = row.last
         // a list or an object takes the box's full width, with what writes and reads it below
         row.element.classList.toggle("wide", row.value !== null && typeof row.value === "object")
-        row.full.replaceChildren(row.last == null ? h("span", { class: "fj-empty" }, "unset") : renderFriendly(row.value))
+        row.full.replaceChildren(row.last == null ? h("span", { class: "fj-empty" }, "unset") : typeof row.value === "number" ? steadyNumber(row) : renderFriendly(row.value))
         requestAnimationFrame(() => fitLists(row.full))
     }
 
@@ -198,7 +204,13 @@ export class BlackboardPanel {
             if (row.last !== text) {
                 row.last = text
                 row.value = value
-                row.preview.replaceChildren(renderJsonLine(value))
+                if (typeof value === "number") {
+                    // the most decimals this key has shown so far, so its decimal point stays put as it changes
+                    row.digits = Math.max(row.digits ?? 0, decimals(value))
+                    row.preview.replaceChildren(steadyNumber(row))
+                } else {
+                    row.preview.replaceChildren(renderJsonLine(value))
+                }
                 this.drawFull(row)
             }
             row.element.classList.remove("unset")
