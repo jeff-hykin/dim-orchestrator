@@ -5,7 +5,7 @@ import * as api from "./api.js"
 import { BlackboardPanel } from "./blackboard.js"
 import { ready as celReady } from "./cel.js"
 import { edgeDetails, nodeDetails, valueDetails } from "./details.js"
-import { GraphView } from "./graph.js"
+import { GraphView, LAYOUT_STYLES } from "./graph.js"
 import { History } from "./history.js"
 import { SourceView } from "./source.js"
 import { buildModel, edgeForRecord } from "./model.js"
@@ -222,6 +222,25 @@ for (const format of ["toml", "yaml"]) {
         }
     })
 }
+// which layout and edge style the graph uses (a ?layout= in the address wins, then the last one picked)
+const layoutPicker = $("#layout-style")
+layoutPicker.replaceChildren(...Object.entries(LAYOUT_STYLES).map(([value, label]) => Object.assign(document.createElement("option"), { value, textContent: label })))
+let pickedLayout = new URLSearchParams(location.search).get("layout")
+try {
+    pickedLayout ??= localStorage.getItem("dim-orchestrator.layout")
+} catch {
+    // no storage
+}
+graph.style = pickedLayout in LAYOUT_STYLES ? pickedLayout : "curves"
+layoutPicker.value = graph.style
+layoutPicker.addEventListener("change", () => {
+    graph.setStyle(layoutPicker.value)
+    try {
+        localStorage.setItem("dim-orchestrator.layout", layoutPicker.value)
+    } catch {
+        // no storage
+    }
+})
 $("#fit").addEventListener("click", () => {
     graph.userMoved = false
     graph.fit()

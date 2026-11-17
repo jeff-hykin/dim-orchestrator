@@ -2,7 +2,11 @@
 // transition the engine takes played along its edge.
 
 import { namesFor } from "./details.js"
-import { edgeSegments, HEADER, layoutGraph, segmentsPath } from "./layout.js"
+import { boundaryPoint, edgeSegments, flowPath, HEADER, layoutGraph, PAD, segmentsPath } from "./layout.js"
+import { layoutElk } from "./layout_elk.js"
+
+// how the graph is laid out and its edges drawn: our own nested layout with curves, or ELK with one of its routings
+export const LAYOUT_STYLES = { curves: "Curves (current)", flow: "dimos-react flow", "elk-orthogonal": "ELK: right angles", "elk-splines": "ELK: splines", "elk-polyline": "ELK: straight segments" }
 
 const SVG = "http://www.w3.org/2000/svg"
 const svg = (tag, attrs = {}, parent) => {
@@ -74,6 +78,7 @@ export class GraphView {
         this.nodeEls = new Map()
         this.edgeEls = new Map()
         this.timerEls = new Map()
+        this.style = "curves"
         this.setUpPanZoom()
         new ResizeObserver(() => !this.userMoved && this.fit()).observe(container)
     }
@@ -128,19 +133,39 @@ export class GraphView {
         return found
     }
 
-    setModel(model) {
+    setStyle(style) {
+        this.style = style in LAYOUT_STYLES ? style : "curves"
+        if (this.model) {
+            this.setModel(this.model)
+        }
+    }
+
+    /** Lay the model out and draw it. ELK lays out in a worker, so the drawing (and the last `show`) follows later. */
+    async setModel(model) {
         this.model = model
-        this.world.replaceChildren()
-        this.nodeEls.clear()
-        this.edgeEls.clear()
-        this.timerEls.clear()
+        const token = (this.drawing = {})
         const box = this.container.getBoundingClientRect()
         const labelWidth = this.labelWidth = (edge) => {
             const context = (this.canvas ??= document.createElement("canvas")).getContext("2d")
             context.font = `10.5px ${getComputedStyle(this.container).getPropertyValue("--mono") || "monospace"}`
-            return context.measureText(edgeLabel(edge) + "  ✎⚡").width + 14
+            return edgeLabel(edge) ? context.measureText(edgeLabel(edge) + "  ✎⚡").width + 14 : 0
         }
-        const layout = layoutGraph(model, (node) => this.measure(node), labelWidth, Math.min(2.4, Math.max(0.6, box.width / Math.max(1, box.height))))
+        const aspect = Math.min(2.4, Math.max(0.6, box.width / Math.max(1, box.height)))
+        const measure = (node) => this.measure(node)
+        let layout
+        try {
+            layout = this.style === "curves" || this.style === "flow" ? layoutGraph(model, measure, labelWidth, aspect) : await layoutElk(model, measure, labelWidth, this.style, aspect)
+        } catch (error) {
+            console.warn(`${this.style} layout failed, using curves:`, error)
+            layout = layoutGraph(model, measure, labelWidth, aspect)
+        }
+        if (token !== this.drawing) {
+            return
+        }
+        this.world.replaceChildren()
+        this.nodeEls.clear()
+        this.edgeEls.clear()
+        this.timerEls.clear()
         this.layout = layout
         const nodeLayer = svg("g", { class: "nodes" }, this.world)
         const edgeLayer = svg("g", { class: "edges" }, this.world)
@@ -165,7 +190,7 @@ export class GraphView {
             }
             this.hues.set(node.id, hue)
         }
-        for (const node of ordered) {
+        for (const node of ordered.filter((one) => one.kind !== "start")) {
             this.drawNode(nodeLayer, node, layout.rects.get(node.id))
         }
         for (const edge of model.edges) {
@@ -173,6 +198,9 @@ export class GraphView {
         }
         this.userMoved = false
         this.fit()
+        if (this.lastShown) {
+            this.show(this.lastShown)
+        }
     }
 
     drawNode(layer, node, rect) {
@@ -193,7 +221,7 @@ export class GraphView {
                 const tag = svg("g", { class: "parallel-tag" }, group)
                 const label = svg("text", { x: rect.x + rect.w - 14, y: rect.y + 20, "text-anchor": "end", class: "tag-text" }, tag)
                 label.textContent = "∥ parallel"
-                const regions = node.inside.map((id) => this.layout.rects.get(id))
+                const regions = node.inside.map((id) => this.layout.rects.get(id)).filter(Boolean)
                 const stacked = regions.length < 2 || regions.every((a, i) => regions.every((b, j) => i === j || a.y + a.h <= b.y || b.y + b.h <= a.y))
                 regions.sort((a, b) => (stacked ? a.y - b.y : a.x - b.x))
                 for (let i = 1; i < regions.length; i++) {
@@ -235,12 +263,37 @@ export class GraphView {
     }
 
     drawEdge(edgeLayer, labelLayer, edge) {
-        const from = this.layout.rects.get(edge.from)
         const to = this.layout.rects.get(edge.to)
-        if (!from || !to) {
-            return
+        let d
+        let labelAt = null
+        if (edge.kind === "initial") {
+            // where a container starts: an arrow from its top-left corner to the entry node
+            const box = this.layout.rects.get(edge.node)
+            if (!box || !to) {
+                return
+            }
+            const corner = { x: box.x + 6, y: box.y + HEADER + 6 }
+            const end = boundaryPoint(to, corner, 3)
+            d = `M${corner.x},${corner.y} L${end.x.toFixed(1)},${end.y.toFixed(1)}`
+        } else if (this.layout.paths) {
+            const drawn = this.layout.paths.get(edge.id)
+            if (!drawn?.d) {
+                return
+            }
+            d = drawn.d
+            labelAt = drawn.label
+        } else {
+            const from = this.layout.rects.get(edge.from)
+            if (!from || !to) {
+                return
+            }
+            const bends = this.layout.routes.get(edge.id) ?? []
+            const backward = bends.length === 0 && (this.layout.vertical.get(edge.id) ? to.y + to.h <= from.y : to.x + to.w <= from.x)
+            // a back edge with no bends has no track to run along: it keeps the plain curve
+            d = this.style === "flow" && edge.from !== edge.to && !backward
+                ? flowPath(from, to, bends, this.layout.vertical.get(edge.id) ?? false)
+                : segmentsPath(edgeSegments(this.model, edge, from, to, bends, this.labelWidth))
         }
-        const d = segmentsPath(edgeSegments(this.model, edge, from, to, this.layout.routes.get(edge.id) ?? [], this.labelWidth))
         const immediate = edge.transition?.mode === "immediate"
         const cls = ["edge", `edge-${edge.kind}`, immediate ? "edge-immediate" : ""].join(" ")
         const group = svg("g", { class: cls, "data-id": edge.id }, edgeLayer)
@@ -250,8 +303,7 @@ export class GraphView {
         const label = edgeLabel(edge)
         let labelGroup = null
         if (label) {
-            const length = path.getTotalLength()
-            const mid = path.getPointAtLength(length / 2)
+            const mid = labelAt ?? path.getPointAtLength(path.getTotalLength() / 2)
             labelGroup = svg("g", { class: `edge-label edge-label-${edge.kind}${immediate ? " edge-label-immediate" : ""}`, "data-id": edge.id }, labelLayer)
             const background = svg("rect", { class: "edge-label-bg" }, labelGroup)
             const text = svg("text", { x: mid.x, y: mid.y + 4, "text-anchor": "middle" }, labelGroup)
@@ -301,6 +353,7 @@ export class GraphView {
      * @param {{ fired?: string[], entered?: string[] }} [animate]
      */
     show(step, animate = {}) {
+        this.lastShown = step
         if (!this.model || !step) {
             return
         }
@@ -318,9 +371,6 @@ export class GraphView {
         for (const [id, element] of this.nodeEls) {
             const node = this.model.nodes.get(id)
             let lit = active.has(id)
-            if (node.kind === "start") {
-                lit = active.has(node.parent)
-            }
             if (node.kind === "final") {
                 lit = outcomes.get(node.parent) === node.outcome
             }

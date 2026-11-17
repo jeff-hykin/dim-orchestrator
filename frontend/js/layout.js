@@ -48,7 +48,8 @@ function layoutWith(model, measure, labelWidth, aspect, innerAspect) {
         if (node.kind !== "compound" && node.kind !== "parallel") {
             return measure(node)
         }
-        const boxes = node.inside.map((child) => ({ id: child, ...size(child) }))
+        // a container's start is drawn as an arrow from its corner, so it takes no room
+        const boxes = node.inside.filter((child) => model.nodes.get(child)?.kind !== "start").map((child) => ({ id: child, ...size(child) }))
         const links = []
         const linkEdges = []
         for (const edge of model.edges) {
@@ -114,12 +115,13 @@ function layoutWith(model, measure, labelWidth, aspect, innerAspect) {
             w: Math.max(maxX - minX + PAD * 2, measured.w),
             h: maxY - minY + PAD * 2 + HEADER,
         }
-        local.set(id, { ...result, place, routes })
+        local.set(id, { ...result, place, routes, vertical: placement === down })
         return result
     }
     const rootSize = size(model.root)
     const rects = new Map()
     const routes = new Map()
+    const vertical = new Map() // edge id -> whether the container holding it flows top to bottom
     const place = (id, x, y, w, h) => {
         rects.set(id, { x, y, w, h })
         const inner = local.get(id)
@@ -132,10 +134,11 @@ function layoutWith(model, measure, labelWidth, aspect, innerAspect) {
         }
         for (const [edgeId, points] of inner.routes) {
             routes.set(edgeId, points.map((point) => ({ x: x + point.x, y: y + point.y })))
+            vertical.set(edgeId, inner.vertical)
         }
     }
     place(model.root, 0, 0, rootSize.w, rootSize.h)
-    return { rects, routes, width: rootSize.w, height: rootSize.h }
+    return { rects, routes, vertical, width: rootSize.w, height: rootSize.h }
 }
 
 /** Where the ray from a rect's centre towards `toward` leaves the rect. */
@@ -227,3 +230,32 @@ export function sampleSegments(segments, perSegment = 16) {
 
 /** An edge label's box around the point it is centred on (the label's text plus its padding, 18 high). */
 export const labelBox = (mid, width) => ({ x: mid.x - width / 2, y: mid.y - 9, w: width, h: 18 })
+
+/**
+ * dimos-react's flow edge (src/graph/paths.ts): out of the right side of `from` (bottom, when the container flows
+ * down) and into the left side (top) of `to`, running along the track its layered bends give, curving at both ends.
+ */
+export function flowPath(from, to, bends, vertical) {
+    const uv = (p) => (vertical ? { u: p.y, v: p.x } : { u: p.x, v: p.y })
+    const xy = (u, v) => (vertical ? `${v.toFixed(1)} ${u.toFixed(1)}` : `${u.toFixed(1)} ${v.toFixed(1)}`)
+    const a = uv(vertical ? { x: from.x + from.w / 2, y: from.y + from.h } : { x: from.x + from.w, y: from.y + from.h / 2 })
+    const b = uv(vertical ? { x: to.x + to.w / 2, y: to.y } : { x: to.x, y: to.y + to.h / 2 })
+    if (!bends.length) {
+        const half = Math.max(Math.abs(b.u - a.u) / 2, 30)
+        return `M${xy(a.u, a.v)} C${xy(a.u + half, a.v)} ${xy(b.u - half, b.v)} ${xy(b.u, b.v)}`
+    }
+    const track = bends.map((p) => uv(p).v).sort((m, n) => m - n)[Math.floor(bends.length / 2)]
+    const forward = b.u > a.u
+    const r = Math.max(32, Math.min(110, forward ? Math.abs(b.u - a.u) / 3 : 80))
+    let d = `M${xy(a.u, a.v)}`
+    if (forward) {
+        d += ` C${xy(a.u + r / 2, a.v)} ${xy(a.u + r / 2, track)} ${xy(a.u + r, track)}`
+        d += ` L${xy(b.u - r, track)}`
+        d += ` C${xy(b.u - r / 2, track)} ${xy(b.u - r / 2, b.v)} ${xy(b.u, b.v)}`
+    } else {
+        d += ` C${xy(a.u + r, a.v)} ${xy(a.u + r, track)} ${xy(a.u, track)}`
+        d += ` L${xy(b.u, track)}`
+        d += ` C${xy(b.u - r, track)} ${xy(b.u - r, b.v)} ${xy(b.u, b.v)}`
+    }
+    return d
+}
