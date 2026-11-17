@@ -1,0 +1,403 @@
+// The page: finds a running orchestrator, follows its journal, and keeps the graph, the blackboard and the timeline
+// on the step being shown (the newest one, or one picked on the timeline).
+
+import * as api from "./api.js"
+import { BlackboardPanel } from "./blackboard.js"
+import { ready as celReady } from "./cel.js"
+import { edgeDetails, nodeDetails, valueDetails } from "./details.js"
+import { GraphView } from "./graph.js"
+import { History } from "./history.js"
+import { buildModel, edgeForRecord } from "./model.js"
+import { Timeline } from "./timeline.js"
+
+// How long to wait between journal reads, and between looks for an orchestrator when none runs.
+const POLL_S = 0.12
+const SEARCH_S = 1.5
+
+const $ = (selector) => document.querySelector(selector)
+const wait = (seconds) => new Promise((resolve) => setTimeout(resolve, seconds * 1000))
+
+const app = {
+    moduleId: null,
+    modules: [],
+    model: null,
+    history: new History(),
+    clockOffset: 0,
+    pinned: null,
+    shownSeq: 0,
+    generation: 0,
+}
+
+// ---------------------------------------------------------------------------------------------- theme and insets
+function applyTheme() {
+    try {
+        document.documentElement.dataset.skin = localStorage.getItem("portal.theme") || "portal"
+        const corners = localStorage.getItem("portal.corners")
+        if (corners === "sharp" || corners === "rounded") {
+            document.documentElement.dataset.corners = corners
+        } else {
+            delete document.documentElement.dataset.corners
+        }
+    } catch {
+        // no storage (outside Desktop): theme.css's :root stays
+    }
+}
+applyTheme()
+addEventListener("storage", applyTheme)
+addEventListener("message", ({ origin, data }) => {
+    if (origin === location.origin && data?.type === "dimos-inset") {
+        for (const side of ["top", "bottom", "left", "right"]) {
+            document.documentElement.style.setProperty(`--dim-inset-${side}`, `${data[side] ?? 0}px`)
+        }
+    }
+})
+if (parent !== window) {
+    parent.postMessage({ type: "dimos-inset-request" }, location.origin)
+}
+
+// ---------------------------------------------------------------------------------------------- views
+const tooltip = $("#tooltip")
+
+function showTip(content, event, pinned = false) {
+    $("#tooltip-content").replaceChildren(content)
+    tooltip.hidden = false
+    tooltip.classList.toggle("pinned", pinned)
+    const narrow = innerWidth < 700
+    if (narrow && pinned) {
+        tooltip.style.left = ""
+        tooltip.style.top = ""
+        tooltip.classList.add("sheet")
+        return
+    }
+    tooltip.classList.remove("sheet")
+    const box = tooltip.getBoundingClientRect()
+    const x = Math.min(innerWidth - box.width - 8, Math.max(8, (event?.clientX ?? innerWidth / 2) + 14))
+    const below = (event?.clientY ?? 80) + 16
+    const y = below + box.height > innerHeight - 8 ? Math.max(8, (event?.clientY ?? 80) - box.height - 12) : below
+    tooltip.style.left = `${x}px`
+    tooltip.style.top = `${y}px`
+}
+
+function hideTip() {
+    if (!app.pinned) {
+        tooltip.hidden = true
+    }
+}
+
+function detailsFor(target) {
+    const step = shownStep()
+    if (target.type === "node") {
+        return nodeDetails(app.model, target.id, step)
+    }
+    if (target.type === "edge") {
+        return edgeDetails(app.model, target.id, step)
+    }
+    return valueDetails(app.model, target.id, step, app.modules)
+}
+
+const graph = new GraphView($("#graph"), {
+    onHover: (target, event) => {
+        if (!app.pinned && event.pointerType !== "touch") {
+            showTip(detailsFor(target), event)
+        }
+    },
+    onLeave: hideTip,
+    onTap: (target, event) => {
+        if (!target) {
+            app.pinned = null
+            tooltip.hidden = true
+            graph.highlight()
+            return
+        }
+        app.pinned = target
+        showTip(detailsFor(target), event, true)
+    },
+})
+
+const panel = new BlackboardPanel($("#blackboard-body"), {
+    onEdit: async (key, value) => {
+        try {
+            await api.setValue(app.moduleId, key, value)
+            toast(`set ${key}`)
+        } catch (error) {
+            toast(`could not set ${key}: ${error.message}`, "danger")
+        }
+    },
+    onPick: (edges, nodes) => {
+        graph.highlight(edges, nodes)
+        toast(edges.length ? "transitions that write it are outlined" : "the node that writes it is outlined")
+    },
+})
+
+const timeline = new Timeline($("#timeline"), app.history, {
+    onSeek: (index, animate) => render(animate ? "step" : "jump"),
+})
+
+// A pill anywhere (blackboard, tooltips) shows its value on hover, or on tap.
+let pillTip = null
+document.addEventListener("pointerover", (event) => {
+    const pill = event.target.closest?.(".pill[data-key]")
+    if (!pill || !app.model || event.pointerType === "touch") {
+        return
+    }
+    pillTip?.remove()
+    pillTip = document.createElement("div")
+    pillTip.className = "pill-tip"
+    pillTip.append(valueDetails(app.model, pill.dataset.key, shownStep(), app.modules))
+    document.body.append(pillTip)
+    const box = pill.getBoundingClientRect()
+    const tip = pillTip.getBoundingClientRect()
+    pillTip.style.left = `${Math.max(8, Math.min(innerWidth - tip.width - 8, box.left))}px`
+    pillTip.style.top = `${box.bottom + 6 + tip.height > innerHeight ? box.top - tip.height - 6 : box.bottom + 6}px`
+})
+document.addEventListener("pointerout", (event) => {
+    if (event.target.closest?.(".pill[data-key]")) {
+        pillTip?.remove()
+        pillTip = null
+    }
+})
+document.addEventListener("click", (event) => {
+    const pill = event.target.closest?.(".pill[data-key]")
+    if (pill && app.model) {
+        event.stopPropagation()
+        app.pinned = { type: "value", id: pill.dataset.key }
+        pillTip?.remove()
+        showTip(valueDetails(app.model, pill.dataset.key, shownStep(), app.modules), event, true)
+    }
+}, true)
+$("#tooltip-close").addEventListener("click", () => {
+    app.pinned = null
+    tooltip.hidden = true
+})
+
+function toast(text, kind = "info") {
+    const element = document.createElement("div")
+    element.className = `toast toast-${kind}`
+    element.textContent = text
+    $("#toasts").append(element)
+    setTimeout(() => element.remove(), 3200)
+}
+
+// ---------------------------------------------------------------------------------------------- layout controls
+const body = document.body
+function setPanel(open) {
+    body.classList.toggle("panel-open", open)
+    $("#toggle-panel").setAttribute("aria-pressed", String(open))
+    try {
+        localStorage.setItem("dim-orchestrator.panel", open ? "1" : "0")
+    } catch {
+        // no storage
+    }
+}
+let panelPref = null
+try {
+    panelPref = localStorage.getItem("dim-orchestrator.panel")
+} catch {
+    // no storage
+}
+setPanel(panelPref == null ? innerWidth >= 700 : panelPref === "1")
+$("#toggle-panel").addEventListener("click", () => setPanel(!body.classList.contains("panel-open")))
+$("#close-panel").addEventListener("click", () => setPanel(false))
+$("#fit").addEventListener("click", () => {
+    graph.userMoved = false
+    graph.fit()
+})
+
+// ---------------------------------------------------------------------------------------------- rendering
+function shownStep() {
+    const steps = app.history.steps
+    return timeline.index == null ? steps.at(-1) : steps[timeline.index]
+}
+
+/**
+ * Show the current step. "live" and "step" animate what changed since the step shown before; "jump" does not.
+ * @param {"live" | "step" | "jump"} mode
+ */
+function render(mode) {
+    const step = shownStep()
+    if (!step || !app.model) {
+        return
+    }
+    const steps = app.history.steps
+    const animate = mode !== "jump"
+    let recent = step
+    for (let i = steps.indexOf(step); i >= 0; i--) {
+        if (steps[i].effects.some((effect) => effect.kind === "transition" || effect.kind === "fault")) {
+            recent = steps[i]
+            break
+        }
+    }
+    let fired = []
+    let entered = []
+    if (animate) {
+        const from = steps.findIndex((s) => s.seq > app.shownSeq)
+        const to = steps.indexOf(step)
+        const between = from < 0 || from > to ? [] : steps.slice(from, to + 1)
+        const before = new Set(steps[Math.max(0, from - 1)]?.active ?? [])
+        for (const s of between) {
+            for (const effect of s.effects) {
+                if (effect.kind === "transition") {
+                    const edge = edgeForRecord(app.model, effect)
+                    if (edge) {
+                        fired.push(edge.id)
+                    }
+                }
+            }
+        }
+        entered = step.active.filter((id) => !before.has(id))
+        // a step's changes flash on the blackboard as a whole, so a burst of steps flashes the union
+        if (between.length > 1) {
+            const changed = Object.assign({}, ...between.map((s) => s.changed))
+            panel.show({ ...step, changed, removed: between.flatMap((s) => s.removed) }, true, app.modules, recent)
+        } else {
+            panel.show(step, true, app.modules, recent)
+        }
+    } else {
+        panel.show(step, false, app.modules, recent)
+    }
+    graph.show(step, { fired, entered })
+    app.shownSeq = step.seq
+    panel.setEditable(timeline.index == null && app.status === "connected")
+    timeline.draw(Date.now() / 1000 + app.clockOffset)
+    const rewound = timeline.index != null
+    body.classList.toggle("rewound", rewound)
+    $("#fault").hidden = !app.history.steps.slice(0, steps.indexOf(step) + 1).some((s) => s.effects.some((e) => e.kind === "fault"))
+    if (app.pinned) {
+        showTip(detailsFor(app.pinned), null, true)
+    }
+}
+
+function tickTimers() {
+    if (app.model && timeline.index == null) {
+        graph.drawTimers(Date.now() / 1000 + app.clockOffset)
+        timeline.draw(Date.now() / 1000 + app.clockOffset)
+    }
+    requestAnimationFrame(tickTimers)
+}
+requestAnimationFrame(tickTimers)
+
+// ---------------------------------------------------------------------------------------------- connection
+function setStatus(status, detail = "") {
+    app.status = status
+    const chip = $("#status")
+    chip.dataset.status = status
+    chip.textContent = {
+        searching: "looking for an orchestrator…",
+        "gateway-down": "dimos gateway unreachable",
+        none: "no orchestrator running",
+        connecting: "connecting…",
+        connected: "live",
+        stopped: "orchestrator stopped",
+    }[status]
+    chip.title = detail
+    const empty = $("#empty")
+    const showEmpty = !app.model && status !== "connected"
+    empty.hidden = !showEmpty
+    $("#empty-detail").textContent = status === "gateway-down" ? `The dimos gateway did not answer${detail ? `: ${detail}` : ""}.` : "Start a blueprint with an Orchestrator module, e.g."
+    panel.setEditable?.(status === "connected" && timeline.index == null)
+}
+
+function fillPicker(orchestrators) {
+    const picker = $("#picker")
+    const ids = orchestrators.map((o) => o.id)
+    picker.hidden = ids.length < 2
+    if (picker.dataset.ids !== ids.join(",")) {
+        picker.dataset.ids = ids.join(",")
+        picker.replaceChildren(...ids.map((id) => Object.assign(document.createElement("option"), { value: id, textContent: id })))
+    }
+    picker.value = app.moduleId ?? ids[0]
+}
+$("#picker").addEventListener("change", (event) => {
+    app.wanted = event.target.value
+    app.generation++
+    run()
+})
+
+async function discover() {
+    while (true) {
+        try {
+            app.modules = await api.runningModules()
+        } catch (error) {
+            setStatus("gateway-down", error.message)
+            await wait(SEARCH_S)
+            continue
+        }
+        const orchestrators = api.orchestratorsIn(app.modules)
+        fillPicker(orchestrators)
+        if (orchestrators.length) {
+            return (orchestrators.find((o) => o.id === app.wanted) ?? orchestrators[0]).id
+        }
+        setStatus(app.model ? "stopped" : "none")
+        await wait(SEARCH_S)
+    }
+}
+
+async function follow(moduleId, generation) {
+    setStatus("connecting")
+    const found = await api.getDefinition(moduleId)
+    const snapshot = await api.getState(moduleId)
+    app.clockOffset = (snapshot.time ?? Date.now() / 1000) - Date.now() / 1000
+    const sameFile = app.model && JSON.stringify(app.model.definition) === JSON.stringify(found.definition) && app.moduleId === moduleId
+    const history = app.history
+    let first = await api.getJournal(moduleId, 0)
+    const restarted = history.steps.length && (first.seq < history.seq || first.entries[0]?.time !== history.steps[0]?.time)
+    if (!sameFile || restarted) {
+        app.model = buildModel(found.definition)
+        app.file = found.file
+        $("#file").textContent = found.file.split("/").pop()
+        $("#file").title = found.file
+        history.steps = []
+        history.faulted = false
+        app.shownSeq = 0
+        graph.setModel(app.model)
+        panel.setModel(app.model)
+        timeline.goLive()
+    }
+    app.moduleId = moduleId
+    if (!history.steps.length && first.oldest > 1) {
+        history.seed(snapshot)
+        first = await api.getJournal(moduleId, snapshot.seq)
+    }
+    setStatus("connected")
+    let entries = first.entries
+    let more = entries.length > 0
+    while (generation === app.generation) {
+        const added = history.add(entries)
+        if (added.length && timeline.index == null) {
+            render("live")
+        } else if (added.length) {
+            timeline.draw()
+        }
+        if (!more) {
+            await wait(POLL_S)
+        }
+        const page = await api.getJournal(moduleId, history.seq)
+        if (page.seq < history.seq) {
+            throw new Error("the orchestrator restarted")
+        }
+        entries = page.entries
+        more = page.entries.length > 0 && page.entries.at(-1).seq < page.seq
+    }
+}
+
+async function run() {
+    const generation = app.generation
+    while (generation === app.generation) {
+        const moduleId = await discover()
+        if (generation !== app.generation) {
+            return
+        }
+        try {
+            await follow(moduleId, generation)
+        } catch (error) {
+            console.warn("lost the orchestrator:", error)
+            setStatus("stopped", error.message)
+            render("jump")
+            await wait(SEARCH_S)
+        }
+    }
+}
+
+setStatus("searching")
+await celReady
+run()

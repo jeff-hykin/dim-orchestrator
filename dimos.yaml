@@ -1,0 +1,8 @@
+# the app's contract with Desktop: https://github.com/dimensionalOS/dimos-desktop-releases/blob/main/docs/apps.md
+title: Orchestrator
+version: "0.1.0"
+spec-version: v1.6
+uses:
+    "@dimos-gateway":
+        - GET active/modules
+        - POST active/modules/{id}/rpcs/{name}

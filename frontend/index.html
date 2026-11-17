@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <title>Orchestrator</title>
+        <link rel="stylesheet" href="../../theme.css" />
+        <link rel="stylesheet" href="style.css" />
+    </head>
+    <body>
+        <header class="bar">
+            <span class="title">Orchestrator</span>
+            <span id="file" class="file"></span>
+            <select id="picker" class="picker" hidden aria-label="orchestrator module"></select>
+            <span id="status" class="status" data-status="searching"></span>
+            <span class="spacer"></span>
+            <span class="rewound-tag">rewound</span>
+            <button id="fit" class="btn" type="button" title="fit the graph">⤢</button>
+            <button id="toggle-panel" class="btn" type="button" aria-pressed="true" title="show or hide the blackboard">▤ Blackboard</button>
+        </header>
+        <main class="main">
+            <div id="graph" class="graph-area">
+                <div id="empty" class="empty" hidden>
+                    <div class="empty-title">No orchestrator running</div>
+                    <div id="empty-detail" class="empty-detail">Start a blueprint with an Orchestrator module, e.g.</div>
+                    <code class="empty-cmd">dimos run orchestration-demo-patrol</code>
+                </div>
+                <div id="fault" class="fault-banner" hidden>⚠ The orchestrator faulted and stopped. Hover the last step for why.</div>
+            </div>
+            <aside id="blackboard" class="panel" aria-label="blackboard">
+                <div class="panel-head">
+                    <span class="panel-title">Blackboard</span>
+                    <button id="close-panel" class="btn btn-ghost" type="button" title="hide">✕</button>
+                </div>
+                <div id="blackboard-body" class="panel-body"></div>
+            </aside>
+        </main>
+        <footer id="timeline" class="timeline"></footer>
+        <div id="tooltip" class="tooltip" hidden>
+            <button id="tooltip-close" class="tooltip-close" type="button" aria-label="close">✕</button>
+            <div id="tooltip-content"></div>
+        </div>
+        <div id="toasts" class="toasts"></div>
+        <script type="module" src="js/main.js"></script>
+    </body>
+</html>
