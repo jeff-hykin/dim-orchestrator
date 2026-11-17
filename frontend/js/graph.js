@@ -2,7 +2,7 @@
 // transition the engine takes played along its edge.
 
 import { namesFor } from "./details.js"
-import { boundaryPoint, edgeShape, HEADER, labelBox, layoutGraph, PAD, segmentsPath } from "./layout.js"
+import { boundaryPoint, edgeShape, HEADER, labelBox, layoutGraph, PAD, sampleSegments, segmentsPath } from "./layout.js"
 import { layoutElk } from "./layout_elk.js"
 
 // how the graph is laid out and its edges drawn: our own nested layout with curves, or ELK with one of its routings
@@ -30,6 +30,45 @@ const HUES = [
     "color-mix(in oklch, var(--info) 50%, var(--accent-alt))",
     "color-mix(in oklch, var(--ok) 50%, var(--warn))",
 ]
+
+/** The point on `path` nearest to `point`, from a coarse walk along it. */
+function nearestPoint(path, point) {
+    const length = path.getTotalLength()
+    let best = null
+    for (let i = 0; i <= 60; i++) {
+        const at = path.getPointAtLength((length * i) / 60)
+        const distance = Math.hypot(at.x - point.x, at.y - point.y)
+        if (!best || distance < best.distance) {
+            best = { x: at.x, y: at.y, distance }
+        }
+    }
+    return best
+}
+
+/**
+ * A small point on the side of a label's box that faces its edge (like "<" before the text), as an open path: filled,
+ * its closing side tucked 1px inside the box so it covers the box's border there, and only its two outer sides stroked.
+ * Nothing when the edge runs through the box.
+ */
+function labelTip(box, anchor) {
+    if (anchor.x > box.x && anchor.x < box.x + box.w && anchor.y > box.y && anchor.y < box.y + box.h) {
+        return null
+    }
+    const reach = 6
+    const half = 4.5
+    const clamp = (value, low, high) => Math.min(high, Math.max(low, value))
+    const f = (x, y) => `${x.toFixed(1)},${y.toFixed(1)}`
+    if (anchor.x <= box.x || anchor.x >= box.x + box.w) {
+        const left = anchor.x <= box.x
+        const edgeX = left ? box.x + 1 : box.x + box.w - 1
+        const y = clamp(anchor.y, box.y + half + 2, box.y + box.h - half - 2)
+        return `M${f(edgeX, y - half)} L${f(left ? box.x - reach : box.x + box.w + reach, y)} L${f(edgeX, y + half)}`
+    }
+    const above = anchor.y <= box.y
+    const edgeY = above ? box.y + 1 : box.y + box.h - 1
+    const x = clamp(anchor.x, box.x + half + 4, box.x + box.w - half - 4)
+    return `M${f(x - half, edgeY)} L${f(x, above ? box.y - reach : box.y + box.h + reach)} L${f(x + half, edgeY)}`
+}
 
 const short = (text, length = 26) => (text.length > length ? `${text.slice(0, length - 1)}…` : text)
 
@@ -259,8 +298,7 @@ export class GraphView {
         const to = this.layout.rects.get(edge.to)
         let d
         let labelAt = null
-        let labelFraction = 0.5
-        let labelShift
+        let labelShift = null
         if (edge.kind === "initial") {
             // where a container starts: an arrow from just below the middle of its title to the entry node
             const box = this.layout.rects.get(edge.node)
@@ -287,8 +325,9 @@ export class GraphView {
             const vertical = this.style === "arcs" ? (this.layout.vertical.get(edge.id) ?? false) : null
             const segments = edgeShape(this.model, edge, from, to, this.layout.routes.get(edge.id) ?? [], this.labelWidth, vertical)
             d = segmentsPath(segments)
-            labelFraction = segments.labelAt ?? 0.5
-            labelShift = segments.labelShift
+            const sampled = sampleSegments(segments)
+            labelAt = sampled.mid
+            labelShift = sampled.side
         }
         const immediate = edge.transition?.mode === "immediate"
         const cls = ["edge", `edge-${edge.kind}`, immediate ? "edge-immediate" : ""].join(" ")
@@ -312,24 +351,21 @@ export class GraphView {
         const label = edgeLabel(edge)
         let labelGroup = null
         if (label) {
-            const mid = labelAt ?? path.getPointAtLength(path.getTotalLength() * labelFraction)
+            const mid = labelAt ?? path.getPointAtLength(path.getTotalLength() / 2)
             labelGroup = svg("g", { class: `edge-label edge-label-${edge.kind}${immediate ? " edge-label-immediate" : ""}`, "data-id": edge.id }, labelLayer)
             const background = svg("rect", { class: "edge-label-bg" }, labelGroup)
             const text = svg("text", { x: mid.x, y: mid.y + 4, "text-anchor": "middle" }, labelGroup)
             this.colorNames(text, (immediate ? "⚡ " : "") + label + (Object.keys(edge.transition?.set ?? {}).length ? " ✎" : ""))
             const w = text.getComputedTextLength() || text.textContent.length * 6.4
-            if (labelShift) {
-                // beside its lane rather than on it
-                const box = labelBox(mid, w + 14, labelShift)
-                text.setAttribute("x", box.x + box.w / 2)
-                text.setAttribute("y", box.y + 13)
-                for (const [key, value] of Object.entries({ x: box.x, y: box.y, width: box.w, height: 18 })) {
-                    background.setAttribute(key, value)
-                }
-            } else {
-                for (const [key, value] of Object.entries({ x: mid.x - w / 2 - 7, y: mid.y - 9, width: w + 14, height: 18 })) {
-                    background.setAttribute(key, value)
-                }
+            const box = labelShift ? labelBox(mid, w + 14, labelShift) : { x: mid.x - w / 2 - 7, y: mid.y - 9, w: w + 14, h: 18 }
+            text.setAttribute("x", box.x + box.w / 2)
+            text.setAttribute("y", box.y + 13)
+            for (const [key, value] of Object.entries({ x: box.x, y: box.y, width: box.w, height: box.h })) {
+                background.setAttribute(key, value)
+            }
+            const tip = labelTip(box, nearestPoint(path, { x: box.x + box.w / 2, y: box.y + box.h / 2 }))
+            if (tip) {
+                labelGroup.insertBefore(svg("path", { d: tip, class: "edge-label-tip" }), text)
             }
         }
         for (const element of [hit, labelGroup].filter(Boolean)) {

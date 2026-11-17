@@ -94,9 +94,9 @@ function layoutWith(model, measure, labelWidth, aspect, innerAspect, arcs) {
                 }
                 const bends = placement.routes.get(linkEdges.indexOf(edge.id)) ?? []
                 const shape = edgeShape(model, edge, from, to, bends, labelWidth, arcs ? placement === down : null)
-                const { points, mid } = sampleSegments(shape)
+                const { points, mid, side } = sampleSegments(shape)
                 points.forEach((point) => grow({ ...point, w: 0, h: 0 }))
-                grow(labelBox(mid, labelWidth(edge), shape.labelShift))
+                grow(labelBox(mid, labelWidth(edge), side))
             }
             return boxes.length ? { x0, y0, x1, y1 } : { x0: 0, y0: 0, x1: 0, y1: 0 }
         }
@@ -234,7 +234,8 @@ export function segmentsPath(segments) {
     return segments.length ? `M${f(segments[0][0])}` + segments.map(([, c1, c2, p]) => ` C${f(c1)} ${f(c2)} ${f(p)}`).join("") : ""
 }
 
-/** Points along the curve, and the one its label sits on (halfway, unless the curve says `labelAt`). */
+/** Points along the curve, the one its label points at (halfway, unless the curve says `labelAt`), and which side of it
+ * the label sits on. */
 export function sampleSegments(segments, perSegment = 16) {
     const points = []
     for (const [a, b, c, d] of segments) {
@@ -252,13 +253,19 @@ export function sampleSegments(segments, perSegment = 16) {
         lengths.push(lengths[i - 1] + Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y))
     }
     const at = lengths.at(-1) * (segments.labelAt ?? 0.5)
-    const mid = points[Math.max(0, lengths.findIndex((length) => length >= at))] ?? points[0]
-    return { points, mid }
+    const index = Math.max(0, lengths.findIndex((length) => length >= at))
+    const mid = points[index] ?? points[0]
+    // the label sits beside the curve, not on it: to the right of a steep stretch, above a flat one
+    const before = points[Math.max(0, index - 1)]
+    const after = points[Math.min(points.length - 1, index + 1)]
+    const steep = Math.abs(after.y - before.y) > Math.abs(after.x - before.x)
+    const side = segments.labelShift ?? (steep ? { x: 1, y: 0 } : { x: 0, y: -1 })
+    return { points, mid, side }
 }
 
 /** An edge label's box around the point it is centred on (the label's text plus its padding, 18 high), moved by `shift`
  * (in half-sizes) to one side of it. */
-export const labelBox = (mid, width, shift = { x: 0, y: 0 }) => ({ x: mid.x - width / 2 + shift.x * (width / 2 + 4), y: mid.y - 9 + shift.y * 12, w: width, h: 18 })
+export const labelBox = (mid, width, shift = { x: 0, y: 0 }) => ({ x: mid.x - width / 2 + shift.x * (width / 2 + 9), y: mid.y - 9 + shift.y * 18, w: width, h: 18 })
 
 /**
  * An edge's curve: dimos-react's arc when `vertical` is given (true or false: which way its container flows), else

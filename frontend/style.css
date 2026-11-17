@@ -509,6 +509,10 @@ svg.graph:active {
 
 .edge-label-bg {
     rx: var(--radius-pill);
+}
+
+.edge-label-bg,
+.edge-label-tip {
     fill: var(--raised);
     stroke: var(--border);
 }
@@ -520,7 +524,9 @@ svg.graph:active {
 }
 
 .edge-label-requires .edge-label-bg,
-.edge-label-ensures .edge-label-bg {
+.edge-label-ensures .edge-label-bg,
+.edge-label-requires .edge-label-tip,
+.edge-label-ensures .edge-label-tip {
     stroke: var(--warn-line, var(--warn));
 }
 
@@ -528,11 +534,13 @@ svg.graph:active {
     fill: var(--danger);
 }
 
-.edge-label.fired .edge-label-bg {
+.edge-label.fired .edge-label-bg,
+.edge-label.fired .edge-label-tip {
     animation: label-fired 1.6s ease-out;
 }
 
-.edge-label.picked .edge-label-bg {
+.edge-label.picked .edge-label-bg,
+.edge-label.picked .edge-label-tip {
     stroke: var(--accent-alt, var(--warn));
     stroke-width: 2;
 }
