@@ -117,6 +117,7 @@ export class GraphView {
         this.edgeEls = new Map()
         this.timerEls = new Map()
         this.style = "curves"
+        this.frames = []
         this.setUpPanZoom()
         new ResizeObserver(() => !this.userMoved && this.fit()).observe(container)
     }
@@ -407,15 +408,66 @@ export class GraphView {
     }
 
     /**
-     * Light the nodes active at a step; when `fired` is given, play those edges and flash the nodes entered.
+     * Show a step. With `frames` (the steps since the last one shown), they play in order through a queue: each one's
+     * edge, then the nodes it lit, before the next begins. More than FIRE_BACKLOG waiting (a fast loop) are played at
+     * once and the queue starts over, so it never falls behind. Without frames it jumps straight there.
      * @param {import("./history.js").Step} step
-     * @param {{ fired?: string[], entered?: string[] }} [animate]
+     * @param {{ frames?: { step: any, fired: string[], entered: string[] }[] }} [animate]
      */
     show(step, animate = {}) {
         this.lastShown = step
         if (!this.model || !step) {
             return
         }
+        if (animate.frames) {
+            if (!animate.frames.length && !this.busy && !this.frames.length) {
+                this.applyState(step)
+                return
+            }
+            this.frames.push(...animate.frames)
+            if (this.frames.length > FIRE_BACKLOG) {
+                const burst = this.frames.splice(0)
+                this.stopQueue()
+                burst.flatMap((frame) => frame.fired).forEach((id) => this.play(id))
+                this.applyState(burst.at(-1).step, burst.flatMap((frame) => frame.entered))
+                return
+            }
+            this.pump()
+            return
+        }
+        this.frames = []
+        this.stopQueue()
+        this.applyState(step)
+    }
+
+    stopQueue() {
+        clearTimeout(this.busy)
+        this.busy = null
+    }
+
+    pump() {
+        if (this.busy || !this.frames.length) {
+            return
+        }
+        const frame = this.frames.shift()
+        if (!frame.fired.length || document.hidden) {
+            this.applyState(frame.step, frame.entered)
+            this.pump()
+            return
+        }
+        frame.fired.forEach((id) => this.play(id))
+        // the nodes light as the spark arrives, and the next frame waits for this one to finish
+        this.busy = setTimeout(() => {
+            this.applyState(frame.step, frame.entered)
+            this.busy = setTimeout(() => {
+                this.busy = null
+                this.pump()
+            }, FIRE_MS * 0.35)
+        }, FIRE_MS * 0.65)
+    }
+
+    /** Light the nodes active at a step, and flash the ones it entered. */
+    applyState(step, entered = []) {
         const active = new Set(step.active)
         const running = new Map()
         for (const call of step.calls) {
@@ -443,16 +495,13 @@ export class GraphView {
                 mark.dataset.outcome = outcome ?? (running.get(id) === "held" ? "held" : "")
             }
         }
-        for (const id of animate.entered ?? []) {
+        for (const id of entered) {
             const element = this.nodeEls.get(id)
             if (element) {
                 element.classList.remove("entered")
                 void element.getBoundingClientRect()
                 element.classList.add("entered")
             }
-        }
-        for (const id of animate.fired ?? []) {
-            this.fire(id)
         }
         this.timers = step.timers
         this.timerClock = step
@@ -474,42 +523,7 @@ export class GraphView {
         }
     }
 
-    /**
-     * Play a transition along its edge. Plays one at a time, each after the last has finished, so a burst of instant
-     * transitions still reads in order; more than FIRE_BACKLOG waiting (a fast loop) are all played at once and the
-     * queue starts over, so it can never fall behind.
-     */
-    fire(edgeId) {
-        if (document.hidden) {
-            return
-        }
-        this.fireQueue ??= []
-        this.fireQueue.push(edgeId)
-        if (this.fireQueue.length > FIRE_BACKLOG) {
-            for (const id of this.fireQueue.splice(0)) {
-                this.play(id)
-            }
-            return
-        }
-        this.pump()
-    }
-
-    /** Drop the transitions still waiting their turn (on a jump, a rewind or a hidden tab). */
-    clearFires() {
-        this.fireQueue = []
-    }
-
-    pump() {
-        if (this.firing || !this.fireQueue?.length) {
-            return
-        }
-        this.play(this.fireQueue.shift())
-        this.firing = setTimeout(() => {
-            this.firing = null
-            this.pump()
-        }, FIRE_MS)
-    }
-
+    /** Play a transition along its edge: the line and label flash, and a spark runs from its start to its end. */
     play(edgeId) {
         const edge = this.edgeEls.get(edgeId)
         if (!edge) {
@@ -523,7 +537,7 @@ export class GraphView {
         const spark = dot(0, 0, 3.5, "spark", edge.group)
         const length = edge.path.getTotalLength()
         const started = performance.now()
-        const duration = FIRE_MS * 0.75
+        const duration = FIRE_MS * 0.65
         const step = (now) => {
             const t = Math.min(1, (now - started) / duration)
             const eased = 1 - (1 - t) ** 3

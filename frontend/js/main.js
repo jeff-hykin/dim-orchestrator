@@ -262,6 +262,32 @@ addEventListener("visibilitychange", () => {
     }
 })
 
+/** The active nodes once `effect` (a transition) is taken: its node's subtree left, its target and that target's
+ * ancestors and entry nodes entered. */
+function activeAfter(model, active, effect) {
+    const inside = (id, root) => {
+        for (let at = id; at != null; at = model.nodes.get(at)?.parent) {
+            if (at === root) {
+                return true
+            }
+        }
+        return false
+    }
+    const next = new Set(active.filter((id) => !inside(id, effect.node)))
+    let at = effect.goto
+    if (!model.nodes.has(at)) {
+        return [...next]
+    }
+    for (let up = at; up != null; up = model.nodes.get(up)?.parent) {
+        next.add(up)
+    }
+    while (model.nodes.get(at)?.def?.initial) {
+        at = model.nodes.get(at).def.initial
+        next.add(at)
+    }
+    return [...next]
+}
+
 function render(mode) {
     const step = shownStep()
     if (!step || !app.model) {
@@ -277,24 +303,30 @@ function render(mode) {
             break
         }
     }
-    let fired = []
-    let entered = []
+    // one frame per step since the last one shown: the graph plays them in order, each edge then the nodes it lit
+    const frames = []
     if (animate) {
         const from = steps.findIndex((s) => s.seq > app.shownSeq)
         const to = steps.indexOf(step)
         const between = from < 0 || from > to ? [] : steps.slice(from, to + 1)
-        const before = new Set(steps[Math.max(0, from - 1)]?.active ?? [])
+        let before = new Set(steps[Math.max(0, from - 1)]?.active ?? [])
         for (const s of between) {
-            for (const effect of s.effects) {
-                if (effect.kind === "transition") {
-                    const edge = edgeForRecord(app.model, effect)
-                    if (edge) {
-                        fired.push(edge.id)
-                    }
-                }
+            const transitions = s.effects.filter((effect) => effect.kind === "transition")
+            // Several transitions in one engine step (an `after` into a node whose `always` leaves at once) still play
+            // one by one: each but the last lights where it landed, the last shows the step as recorded.
+            let active = [...before]
+            transitions.forEach((effect, index) => {
+                const last = index === transitions.length - 1
+                const shown = last ? s : { ...s, active: (active = activeAfter(app.model, active, effect)) }
+                const fired = [edgeForRecord(app.model, effect)?.id].filter(Boolean)
+                frames.push({ step: shown, fired, entered: shown.active.filter((id) => !before.has(id)) })
+                before = new Set(shown.active)
+            })
+            if (!transitions.length) {
+                frames.push({ step: s, fired: [], entered: s.active.filter((id) => !before.has(id)) })
             }
+            before = new Set(s.active)
         }
-        entered = step.active.filter((id) => !before.has(id))
         // a step's changes flash on the blackboard as a whole, so a burst of steps flashes the union
         if (between.length > 1) {
             const changed = Object.assign({}, ...between.map((s) => s.changed))
@@ -304,9 +336,8 @@ function render(mode) {
         }
     } else {
         panel.show(step, false, app.modules, recent)
-        graph.clearFires()
     }
-    graph.show(step, { fired, entered })
+    graph.show(step, animate ? { frames } : {})
     app.shownSeq = step.seq
     panel.setEditable(timeline.index == null && app.status === "connected")
     timeline.draw(Date.now() / 1000 + app.clockOffset)

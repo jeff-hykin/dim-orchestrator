@@ -516,6 +516,18 @@ svg.graph:active {
     fill: var(--raised);
     stroke: var(--border-strong);
     stroke-dasharray: 3 2;
+    /* see-through until hovered, so a label hides less of what is behind it */
+    fill-opacity: 0.55;
+    stroke-opacity: 0.55;
+    transition: fill-opacity 0.15s, stroke-opacity 0.15s;
+}
+
+.edge-label:hover .edge-label-bg,
+.edge-label:hover .edge-label-tip,
+.edge-label.picked .edge-label-bg,
+.edge-label.picked .edge-label-tip {
+    fill-opacity: 1;
+    stroke-opacity: 1;
 }
 
 .edge-label text {
