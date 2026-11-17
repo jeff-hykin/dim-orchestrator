@@ -7,6 +7,7 @@ import { ready as celReady } from "./cel.js"
 import { edgeDetails, nodeDetails, valueDetails } from "./details.js"
 import { GraphView } from "./graph.js"
 import { History } from "./history.js"
+import { SourceView } from "./source.js"
 import { buildModel, edgeForRecord } from "./model.js"
 import { Timeline } from "./timeline.js"
 
@@ -201,6 +202,22 @@ try {
 setPanel(panelPref == null ? innerWidth >= 700 : panelPref === "1")
 $("#toggle-panel").addEventListener("click", () => setPanel(!body.classList.contains("panel-open")))
 $("#close-panel").addEventListener("click", () => setPanel(false))
+const source = new SourceView($("#graph"), {
+    onApply: async (text) => {
+        const problems = await api.setSource(app.moduleId, text)
+        if (!problems.length) {
+            toast("Applied: the orchestrator restarted on the new file")
+            // the journal starts over at 1: reconnect now rather than at the next poll
+            app.generation++
+            run()
+        }
+        return problems
+    },
+})
+$("#toggle-source").addEventListener("click", () => {
+    source.show(!source.open)
+    $("#toggle-source").setAttribute("aria-pressed", String(source.open))
+})
 $("#fit").addEventListener("click", () => {
     graph.userMoved = false
     graph.fit()
@@ -293,6 +310,7 @@ function setStatus(status, detail = "") {
         stopped: "orchestrator stopped",
     }[status]
     chip.title = detail
+    source.setEditable(status === "connected")
     const empty = $("#empty")
     const showEmpty = !app.model && status !== "connected"
     empty.hidden = !showEmpty
@@ -357,6 +375,7 @@ async function follow(moduleId, generation) {
         timeline.goLive()
     }
     app.moduleId = moduleId
+    source.setSource(found.file, found.source)
     if (!history.steps.length && first.oldest > 1) {
         history.seed(snapshot)
         first = await api.getJournal(moduleId, snapshot.seq)

@@ -3,7 +3,17 @@
 
 import { renderCel } from "./cel.js"
 import { h, namesFor, publisherOf, renderJson, renderJsonLine } from "./details.js"
+import { edgeLabel } from "./graph.js"
 import { groupOf } from "./model.js"
+
+/** The transitions whose `on`, `if` or `after` reads `key` (directly, or a field of it). */
+function usersOf(model, key) {
+    const reads = new RegExp(`(^|[^\\w.])${key.replace(/[.]/g, "\\.")}($|[^\\w])`)
+    return model.edges
+        .filter((edge) => edge.transition)
+        .filter(({ transition }) => transition.on === key || [transition.if, transition.after].some((source) => source != null && reads.test(String(source))))
+        .map((edge) => edge.id)
+}
 
 const GROUPS = [
     ["signals", "Signals", "read from streams"],
@@ -66,25 +76,42 @@ export class BlackboardPanel {
         }
     }
 
-    // A row is one fixed-height line (key and a one-line preview) until it is clicked; expanded, it adds a fixed-height,
-    // scrolling box with the full value and what writes the key, so live updates never change the panel's layout.
+    // A row is one fixed-height line (key and a one-line preview) until it is clicked. Expanded, the preview gives way
+    // to a fixed-height, scrolling box: where the key comes from and which transitions use it on the left, the full
+    // value on the right. Live updates never change the panel's layout.
     addRow(group, key, event) {
         const model = this.model
         const preview = h("div", { class: "bb-preview" })
         const full = h("div", { class: "bb-full" })
-        const links = h("div", { class: "bb-links" })
+        const sources = h("div", { class: "bb-sources" })
+        const list = (title, items) => {
+            if (items.length) {
+                sources.append(h("div", { class: "bb-src-title" }, title), ...items)
+            }
+        }
+        const transition = (edgeId) => {
+            const edge = model.edgeById.get(edgeId)
+            return h(
+                "button",
+                { class: "bb-src", type: "button", onclick: (click) => {
+                    click.stopPropagation()
+                    this.handlers.onPick([edgeId], [])
+                } },
+                h("span", { class: "bb-src-line" }, h("span", { class: "bb-src-node" }, edge.from), h("span", { class: "bb-src-arrow" }, " → "), edge.transition?.goto ?? edge.to),
+                h("span", { class: "bb-src-when" }, edgeLabel(edge)),
+            )
+        }
         const signal = model.signals.get(key)
         if (signal) {
-            links.append(h("span", { class: "bb-link", title: "the stream this signal reads" }, "⟵ ", h("code", {}, signal.stream + (signal.field ? `.${signal.field}` : ""))))
+            list("read from", [h("code", { class: "bb-src" }, signal.stream + (signal.field ? `.${signal.field}` : ""))])
         }
-        if (model.results.has(key)) {
-            const nodes = model.results.get(key)
-            links.append(h("button", { class: "bb-link", type: "button", onclick: () => this.handlers.onPick([], nodes) }, "⟵ result of ", nodes.join(", ")))
-        }
-        if (model.setters.has(key)) {
-            const edges = model.setters.get(key)
-            links.append(h("button", { class: "bb-link", type: "button", onclick: () => this.handlers.onPick(edges, []) }, `⟵ set by ${edges.length} transition${edges.length > 1 ? "s" : ""}`))
-        }
+        const resultOf = model.results.get(key) ?? []
+        list("result of", resultOf.map((node) => h("button", { class: "bb-src", type: "button", onclick: (click) => {
+            click.stopPropagation()
+            this.handlers.onPick([], [node])
+        } }, h("span", { class: "bb-src-node" }, node))))
+        list("set by", (model.setters.get(key) ?? []).map(transition))
+        list("read by", usersOf(model, key).map(transition))
         const editButton = group === "signals" || group === "vars"
             ? h("button", { class: "bb-edit", type: "button", title: `set ${key}`, onclick: (click) => {
                 click.stopPropagation()
@@ -100,7 +127,7 @@ export class BlackboardPanel {
             preview,
             editButton,
         )
-        const element = h("div", { class: "bb-row", "data-key": key }, line, h("div", { class: "bb-detail" }, links, full))
+        const element = h("div", { class: "bb-row", "data-key": key }, line, h("div", { class: "bb-detail" }, sources, full))
         if (event) {
             preview.append(renderCel(event.when, names))
             full.append(renderCel(event.when, names))

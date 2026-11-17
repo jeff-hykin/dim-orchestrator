@@ -51,3 +51,5 @@ export const getDefinition = (moduleId) => call(moduleId, "definition")
 export const getState = (moduleId) => call(moduleId, "state")
 export const getJournal = (moduleId, after, limit = 1000) => call(moduleId, "journal", { after, limit })
 export const setValue = (moduleId, key, value) => call(moduleId, "set_value", { key, value })
+/** Replace the orchestrator's file: the problems found (nothing changed), or [] once it runs the new file. */
+export const setSource = (moduleId, source) => call(moduleId, "set_source", { source })

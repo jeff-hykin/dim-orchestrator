@@ -10,7 +10,7 @@ which nodes are active, each transition as it fires, the blackboard, and a rewin
 - `frontend/index.html`, `style.css`: the page. Only `theme.css` tokens for colors, fonts and radii.
 - `frontend/js/`
   - `api.js`: the dimos gateway calls: finds the Orchestrator module (`GET active/modules`) and calls its RPCs
-    `definition`, `state`, `journal(after, limit)` and `set_value(key, value)` (`POST active/modules/{id}/rpcs/{name}`).
+    `definition`, `state`, `journal(after, limit)`, `set_value(key, value)` and `set_source(source)` (`POST active/modules/{id}/rpcs/{name}`).
   - `main.js`: discovery and the journal-following loop, and which step is shown.
   - `model.js`: the definition as a graph (nodes, `done`/`failed` markers, start dots, transition and fallback edges).
   - `layered.js`: dimos-react's layered layout, as JS. `layout.js`: the nested layout built on it (each compound lays
@@ -19,6 +19,8 @@ which nodes are active, each transition as it fires, the blackboard, and a rewin
   - `history.js`: every step seen, with the blackboard rebuilt at each one (the rewind store).
   - `blackboard.js`, `details.js`, `cel.js`, `timeline.js`: the right-hand table, hover/tap details, CEL highlighting
     (tree-sitter, `frontend/vendor/`), and the bottom timeline.
+  - `source.js`: the TOML file over the graph, highlighted and editable; Apply calls the `set_source` RPC, which
+    checks the text against the running blueprint and restarts the engine on it.
 - `tools/dev.js`: serves the app like Desktop does, with `/gateways/dimos/*` proxied to a dimos gateway.
 - `tools/record_demos.js`: records the demo videos. `tools/build_cel_wasm.sh`: rebuilds the vendored CEL grammar.
 

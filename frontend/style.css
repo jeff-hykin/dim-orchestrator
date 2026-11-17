@@ -785,13 +785,20 @@ svg.graph.picking .edge:not(.picked) .edge-line {
     opacity: 0.6;
 }
 
-/* the expanded row: a fixed-height box that scrolls, so live updates never move what is below it */
+/* the expanded row: the preview gives way to a fixed-height box that scrolls (so live updates never move what is
+   below it): where the key comes from and what uses it on the left, its full value on the right */
+.bb-row.expanded .bb-preview {
+    visibility: hidden;
+}
+
 .bb-detail {
     display: none;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    gap: 12px;
     height: 120px;
     overflow: auto;
     overscroll-behavior: contain;
-    margin: 2px 0 6px 24px;
+    margin: 0 0 6px 24px;
     padding: 6px 8px;
     border-left: 2px solid var(--kind, var(--border-strong));
     background: var(--input-bg);
@@ -799,12 +806,91 @@ svg.graph.picking .edge:not(.picked) .edge-line {
 }
 
 .bb-row.expanded .bb-detail {
-    display: block;
+    display: grid;
+}
+
+.bb-sources {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    min-width: 0;
+}
+
+.bb-sources:empty::before {
+    content: "nothing writes or reads it";
+    color: var(--muted-fg);
+    font-size: 10.5px;
+}
+
+.bb-src-title {
+    margin-top: 4px;
+    font-size: 9.5px;
+    text-transform: var(--label-case);
+    letter-spacing: 0.08em;
+    color: var(--muted-fg);
+}
+
+.bb-src-title:first-child {
+    margin-top: 0;
+}
+
+.bb-src {
+    display: flex;
+    flex-direction: column;
+    max-width: 100%;
+    background: none;
+    border: none;
+    padding: 1px 0;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--fg);
+    text-align: left;
+    cursor: pointer;
+}
+
+code.bb-src {
+    cursor: default;
+}
+
+button.bb-src:hover {
+    text-decoration: underline;
+}
+
+.bb-src-line,
+.bb-src-when {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bb-src-when {
+    font-size: 10px;
+    color: var(--muted-fg);
+    margin-bottom: 2px;
+}
+
+.bb-src-node {
+    color: var(--fg);
+    font-weight: 600;
+}
+
+.bb-src-arrow {
+    color: var(--muted-fg);
 }
 
 .bb-full {
+    min-width: 0;
     font-size: 11.5px;
     line-height: 1.6;
+    text-align: right;
+}
+
+.bb-full .bb-json {
+    display: inline-block;
+    text-align: left;
+    max-width: 100%;
 }
 
 .bb-json,
@@ -1343,6 +1429,148 @@ span.bb-link {
 .toast-danger {
     color: var(--danger);
     border-color: var(--danger-line, var(--danger));
+}
+
+/* ---------------------------------------------------------------- the TOML file, over the graph */
+.source {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+}
+
+.source[hidden] {
+    display: none;
+}
+
+.src-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+}
+
+.src-path {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    direction: rtl; /* cut the path from the left, keeping the file name (the inner span stays left-to-right) */
+    text-align: left;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--muted-fg);
+}
+
+.btn-primary {
+    background: var(--primary);
+    color: var(--primary-fg);
+    border-color: var(--primary);
+}
+
+.btn-primary:hover {
+    background: var(--primary-hover, var(--primary));
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+/* the textarea sits exactly over the highlighted copy: same font, size, padding and wrapping */
+.src-editor {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+}
+
+.src-code,
+.src-input {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    padding: 12px 16px;
+    border: none;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.6;
+    tab-size: 4;
+    white-space: pre;
+    overflow: auto;
+    background: transparent;
+}
+
+.src-code {
+    color: var(--code-fg, var(--fg));
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.src-input {
+    color: transparent;
+    caret-color: var(--fg);
+    resize: none;
+    outline: none;
+}
+
+.src-input::selection {
+    background: var(--sel);
+}
+
+.source.editing .src-editor {
+    box-shadow: inset 0 0 0 1px var(--ring, var(--primary));
+}
+
+.t-com {
+    color: var(--code-com, var(--muted-fg));
+    font-style: italic;
+}
+
+.t-str {
+    color: var(--code-str, var(--ok));
+}
+
+.t-table {
+    color: var(--head-color, var(--primary));
+    font-weight: 600;
+}
+
+.t-key {
+    color: var(--code-loc, var(--info));
+}
+
+.t-num {
+    color: var(--code-num, var(--warn));
+}
+
+.t-bool {
+    color: var(--code-kw, var(--accent-alt));
+}
+
+.src-problems {
+    max-height: 30%;
+    overflow: auto;
+    padding: 8px 12px;
+    border-top: 1px solid var(--danger-line, var(--danger));
+    background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+    font-size: 12px;
+}
+
+.src-problems-title {
+    color: var(--danger);
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.src-problem {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    white-space: pre-wrap;
+    padding: 2px 0;
 }
 
 /* ---------------------------------------------------------------- phones */
