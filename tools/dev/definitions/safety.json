@@ -1,0 +1,239 @@
+{
+ "root": "Robot",
+ "constants": {},
+ "signals": [
+  {
+   "name": "obstacle",
+   "stream": "ToyRobot.obstacle",
+   "field": "data"
+  },
+  {
+   "name": "estop",
+   "stream": "ToyRobot.estop",
+   "field": "data"
+  }
+ ],
+ "events": [],
+ "vars": {
+  "carrying": false
+ },
+ "activities": [
+  {
+   "name": "drive",
+   "start": "ToyRobot.drive_to",
+   "cancel": "ToyRobot.stop_driving",
+   "uses": [
+    "base"
+   ]
+  },
+  {
+   "name": "pick",
+   "start": "ToyRobot.pick",
+   "cancel": "ToyRobot.release_arm",
+   "uses": [
+    "arm"
+   ]
+  },
+  {
+   "name": "place",
+   "start": "ToyRobot.place_item",
+   "cancel": "ToyRobot.release_arm",
+   "uses": [
+    "arm"
+   ]
+  }
+ ],
+ "resources": [
+  "base",
+  "arm"
+ ],
+ "nodes": [
+  {
+   "name": "Robot",
+   "transitions": [],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [
+    "Working",
+    "Stowing",
+    "Paused",
+    "EStopped"
+   ],
+   "parallel": [],
+   "initial": "Working",
+   "outcomes": []
+  },
+  {
+   "name": "Working",
+   "transitions": [
+    {
+     "goto": "EStopped",
+     "mode": "immediate",
+     "set": {},
+     "on": "estop",
+     "after": null,
+     "if": "estop"
+    },
+    {
+     "goto": "Paused",
+     "mode": "graceful",
+     "set": {},
+     "on": "obstacle",
+     "after": null,
+     "if": "obstacle"
+    }
+   ],
+   "requires": [],
+   "ensures": [
+    {
+     "expect": [
+      "!carrying"
+     ],
+     "fallback": "Stowing"
+    }
+   ],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [
+    "Fetching",
+    "Carrying"
+   ],
+   "parallel": [],
+   "initial": "Fetching",
+   "outcomes": []
+  },
+  {
+   "name": "Fetching",
+   "transitions": [
+    {
+     "goto": "Carrying",
+     "mode": "graceful",
+     "set": {
+      "carrying": "true"
+     },
+     "on": null,
+     "after": null,
+     "if": "succeeded"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "pick",
+   "args": {
+    "item": "'crate'"
+   },
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Carrying",
+   "transitions": [
+    {
+     "goto": "Fetching",
+     "mode": "graceful",
+     "set": {
+      "carrying": "false"
+     },
+     "on": null,
+     "after": null,
+     "if": "succeeded"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "drive",
+   "args": {
+    "place": "'loading dock'"
+   },
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Stowing",
+   "transitions": [
+    {
+     "goto": "Paused",
+     "mode": "graceful",
+     "set": {
+      "carrying": "false"
+     },
+     "on": null,
+     "after": null,
+     "if": "succeeded"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "place",
+   "args": {
+    "item": "'crate'"
+   },
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Paused",
+   "transitions": [
+    {
+     "goto": "Working",
+     "mode": "graceful",
+     "set": {},
+     "on": "obstacle",
+     "after": null,
+     "if": "!obstacle"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "EStopped",
+   "transitions": [
+    {
+     "goto": "Working",
+     "mode": "graceful",
+     "set": {},
+     "on": "estop",
+     "after": null,
+     "if": "!estop"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  }
+ ]
+}

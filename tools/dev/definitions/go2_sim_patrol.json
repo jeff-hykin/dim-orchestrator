@@ -1,0 +1,560 @@
+{
+ "root": "Mission",
+ "constants": {
+  "route": [
+   {
+    "header": {
+     "frame_id": "",
+     "seq": 0,
+     "stamp": {
+      "sec": 0,
+      "nsec": 0
+     }
+    },
+    "pose": {
+     "position": {
+      "x": 4.0,
+      "y": 4.0,
+      "z": 0.0
+     },
+     "orientation": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0,
+      "w": 1.0
+     }
+    }
+   },
+   {
+    "header": {
+     "frame_id": "",
+     "seq": 0,
+     "stamp": {
+      "sec": 0,
+      "nsec": 0
+     }
+    },
+    "pose": {
+     "position": {
+      "x": 7.4,
+      "y": 4.0,
+      "z": 0.0
+     },
+     "orientation": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0,
+      "w": 1.0
+     }
+    }
+   },
+   {
+    "header": {
+     "frame_id": "",
+     "seq": 0,
+     "stamp": {
+      "sec": 0,
+      "nsec": 0
+     }
+    },
+    "pose": {
+     "position": {
+      "x": 9.5,
+      "y": 5.0,
+      "z": 0.0
+     },
+     "orientation": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0,
+      "w": 1.0
+     }
+    }
+   },
+   {
+    "header": {
+     "frame_id": "",
+     "seq": 0,
+     "stamp": {
+      "sec": 0,
+      "nsec": 0
+     }
+    },
+    "pose": {
+     "position": {
+      "x": 8.0,
+      "y": 8.0,
+      "z": 0.0
+     },
+     "orientation": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0,
+      "w": 1.0
+     }
+    }
+   },
+   {
+    "header": {
+     "frame_id": "",
+     "seq": 0,
+     "stamp": {
+      "sec": 0,
+      "nsec": 0
+     }
+    },
+    "pose": {
+     "position": {
+      "x": 8.5,
+      "y": 11.3,
+      "z": 0.0
+     },
+     "orientation": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0,
+      "w": 1.0
+     }
+    }
+   },
+   {
+    "header": {
+     "frame_id": "",
+     "seq": 0,
+     "stamp": {
+      "sec": 0,
+      "nsec": 0
+     }
+    },
+    "pose": {
+     "position": {
+      "x": 6.5,
+      "y": 11.3,
+      "z": 0.0
+     },
+     "orientation": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0,
+      "w": 1.0
+     }
+    }
+   },
+   {
+    "header": {
+     "frame_id": "",
+     "seq": 0,
+     "stamp": {
+      "sec": 0,
+      "nsec": 0
+     }
+    },
+    "pose": {
+     "position": {
+      "x": 3.5,
+      "y": 10.0,
+      "z": 0.0
+     },
+     "orientation": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0,
+      "w": 1.0
+     }
+    }
+   },
+   {
+    "header": {
+     "frame_id": "",
+     "seq": 0,
+     "stamp": {
+      "sec": 0,
+      "nsec": 0
+     }
+    },
+    "pose": {
+     "position": {
+      "x": 3.0,
+      "y": 7.1,
+      "z": 0.0
+     },
+     "orientation": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0,
+      "w": 1.0
+     }
+    }
+   }
+  ],
+  "charger": {
+   "header": {
+    "frame_id": "",
+    "seq": 0,
+    "stamp": {
+     "sec": 0,
+     "nsec": 0
+    }
+   },
+   "pose": {
+    "position": {
+     "x": 1.0,
+     "y": 1.0,
+     "z": 0.0
+    },
+    "orientation": {
+     "x": 0.0,
+     "y": 0.0,
+     "z": 0.0,
+     "w": 1.0
+    }
+   }
+  },
+  "low_battery": 0.2,
+  "full_battery": 0.95,
+  "pause_s": 3.0,
+  "retry_s": 1.0,
+  "PREEMPTED": 2,
+  "SUCCEEDED": 3,
+  "ABORTED": 4
+ },
+ "signals": [
+  {
+   "name": "nav_status",
+   "stream": "MLSPlannerNative.nav_status",
+   "field": null
+  },
+  {
+   "name": "battery_level",
+   "stream": "FakeBattery.battery",
+   "field": "percentage"
+  }
+ ],
+ "events": [
+  {
+   "name": "arrived",
+   "when": "nav_status.status == SUCCEEDED && nav_status.goal_id.stamp == nav.goal"
+  },
+  {
+   "name": "gave_up",
+   "when": "(nav_status.status == ABORTED || nav_status.status == PREEMPTED) && nav_status.goal_id.stamp == nav.goal"
+  },
+  {
+   "name": "battery_low",
+   "when": "battery_level < low_battery"
+  },
+  {
+   "name": "charged",
+   "when": "battery_level >= full_battery"
+  }
+ ],
+ "vars": {
+  "patrol.index": 0
+ },
+ "activities": [
+  {
+   "name": "navigate",
+   "start": "MLSPlannerNative.go_to",
+   "cancel": "MLSPlannerNative.stop_navigation",
+   "uses": [
+    "base"
+   ]
+  },
+  {
+   "name": "charge",
+   "start": "FakeBattery.start_charging",
+   "cancel": "FakeBattery.stop_charging",
+   "uses": []
+  }
+ ],
+ "resources": [
+  "base"
+ ],
+ "nodes": [
+  {
+   "name": "Mission",
+   "transitions": [],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [
+    "Patrolling",
+    "Charging"
+   ],
+   "parallel": [],
+   "initial": "Patrolling",
+   "outcomes": []
+  },
+  {
+   "name": "Patrolling",
+   "transitions": [
+    {
+     "goto": "Charging",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "battery_low"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [
+    "NextWaypoint",
+    "Navigating",
+    "Retrying",
+    "Pausing"
+   ],
+   "parallel": [],
+   "initial": "NextWaypoint",
+   "outcomes": []
+  },
+  {
+   "name": "NextWaypoint",
+   "transitions": [
+    {
+     "goto": "Navigating",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "patrol.index < size(route)"
+    },
+    {
+     "goto": "Navigating",
+     "mode": "graceful",
+     "set": {
+      "patrol.index": "0"
+     },
+     "on": null,
+     "after": null,
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Navigating",
+   "transitions": [
+    {
+     "goto": "Pausing",
+     "mode": "graceful",
+     "set": {
+      "patrol.index": "patrol.index + 1"
+     },
+     "on": null,
+     "after": null,
+     "if": "arrived"
+    },
+    {
+     "goto": "NextWaypoint",
+     "mode": "graceful",
+     "set": {
+      "patrol.index": "patrol.index + 1"
+     },
+     "on": null,
+     "after": null,
+     "if": "gave_up"
+    },
+    {
+     "goto": "Retrying",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "failed"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "navigate",
+   "args": {
+    "pose": "route[patrol.index]"
+   },
+   "result": "nav.goal",
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Retrying",
+   "transitions": [
+    {
+     "goto": "Navigating",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": "retry_s",
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Pausing",
+   "transitions": [
+    {
+     "goto": "NextWaypoint",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": "pause_s",
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Charging",
+   "transitions": [
+    {
+     "goto": "Patrolling",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "done"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [
+    "ReturnToCharger",
+    "ReturnRetry",
+    "OnCharger"
+   ],
+   "parallel": [],
+   "initial": "ReturnToCharger",
+   "outcomes": [
+    "done"
+   ]
+  },
+  {
+   "name": "ReturnToCharger",
+   "transitions": [
+    {
+     "goto": "OnCharger",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "arrived"
+    },
+    {
+     "goto": "ReturnRetry",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "gave_up"
+    },
+    {
+     "goto": "ReturnRetry",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "failed"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "navigate",
+   "args": {
+    "pose": "charger"
+   },
+   "result": "nav.goal",
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "ReturnRetry",
+   "transitions": [
+    {
+     "goto": "ReturnToCharger",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": "retry_s",
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "OnCharger",
+   "transitions": [
+    {
+     "goto": "done",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "charged"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "charge",
+   "args": {},
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  }
+ ]
+}

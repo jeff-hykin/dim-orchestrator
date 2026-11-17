@@ -40,6 +40,9 @@ export function startDevServer({ port, gateway, theme }) {
                 return Response.json({ error: `the dimos gateway at ${gateway} did not answer: ${error.message}` }, { status: 502 })
             }
         }
+        if (url.pathname.startsWith("/dev/")) {
+            return serveDir(request, { fsRoot: `${here}dev`, urlRoot: "dev", quiet: true })
+        }
         if (url.pathname.startsWith("/apps/dim-orchestrator/")) {
             return serveDir(request, { fsRoot: frontend, urlRoot: "apps/dim-orchestrator", quiet: true })
         }

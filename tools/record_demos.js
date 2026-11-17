@@ -258,17 +258,6 @@ addEventListener("DOMContentLoaded", () => {
     addEventListener("pointerup", () => (dot.style.transform = ""), true)
 })`
 
-async function waitFor(check, seconds, what) {
-    const until = Date.now() + seconds * 1000
-    while (Date.now() < until) {
-        if (await check().catch(() => false)) {
-            return
-        }
-        await new Promise((resolve) => setTimeout(resolve, 500))
-    }
-    throw new Error(`timed out waiting for ${what}`)
-}
-
 await new Command()
     .name("record_demos")
     .description("Record a video of the app against each orchestrator demo")
@@ -286,6 +275,7 @@ await new Command()
             .cwd(dimos).env({ DIMOS_APP: JSON.stringify({ socket }) }).quiet().noThrow().spawn()
         const server = startDevServer({ port, gateway: `http://127.0.0.1:${gatewayPort}`, theme: "http://127.0.0.1:5555/theme.css" })
         const browser = await chromium.launch()
+        const failed = []
         try {
             for (const name of names) {
                 const demo = DEMOS[name]
@@ -294,11 +284,7 @@ await new Command()
                 }
                 console.log(`== ${name}: ${demo.about}`)
                 await $`${bin}/dimos stop`.cwd(dimos).quiet().noThrow()
-                const run = $`${bin}/dimos --viewer none run orchestration-demo-${name}`.cwd(dimos).quiet().noThrow().spawn()
-                await waitFor(async () => {
-                    const response = await fetch(`http://127.0.0.1:${gatewayPort}/active/modules`)
-                    return (await response.json()).modules?.some((module) => module.class === "Orchestrator")
-                }, 90, "the orchestrator to start")
+                // The page opens first, so the video starts on "no orchestrator running" and catches every step.
                 const size = demo.phone ? devices["iPhone 13"].viewport : { width: 1280, height: 760 }
                 const context = await browser.newContext({
                     ...(demo.phone ? devices["iPhone 13"] : { viewport: size }),
@@ -307,9 +293,15 @@ await new Command()
                 await context.addInitScript(CURSOR)
                 const page = await context.newPage()
                 await page.goto(`http://127.0.0.1:${port}/apps/dim-orchestrator/`)
-                await page.waitForSelector("#status[data-status=connected]", { timeout: 30000 })
+                await page.waitForSelector("#status[data-status=none]", { timeout: 30000 })
+                const run = $`${bin}/dimos --viewer none run orchestration-demo-${name}`.cwd(dimos).quiet().noThrow().spawn()
                 try {
+                    await page.waitForSelector("#status[data-status=connected]", { timeout: 90000 })
                     await demo.run(driver(page, demo.phone))
+                    console.log(`   ${out}/${name}.mp4`)
+                } catch (error) {
+                    failed.push(name)
+                    console.error(`   ${name} failed: ${error.message.split("\n")[0]}`)
                 } finally {
                     const video = page.video()
                     await context.close()
@@ -320,12 +312,15 @@ await new Command()
                     run.kill("SIGTERM")
                     await run.catch(() => {})
                 }
-                console.log(`   ${out}/${name}.mp4`)
             }
         } finally {
             await browser.close()
             await server.shutdown()
             gateway.kill("SIGTERM")
+        }
+        if (failed.length) {
+            console.error(`failed: ${failed.join(", ")}`)
+            Deno.exit(1)
         }
     })
     .parse(Deno.args)

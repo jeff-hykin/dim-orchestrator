@@ -1,0 +1,268 @@
+{
+ "root": "Mission",
+ "constants": {
+  "route": [
+   "lobby",
+   "lab",
+   "kitchen",
+   "office"
+  ],
+  "low_battery": 0.3,
+  "full_battery": 0.9,
+  "pause_s": 1.5
+ },
+ "signals": [
+  {
+   "name": "battery_level",
+   "stream": "ToyRobot.battery",
+   "field": "percentage"
+  }
+ ],
+ "events": [
+  {
+   "name": "battery_low",
+   "when": "battery_level < low_battery"
+  },
+  {
+   "name": "charged",
+   "when": "battery_level >= full_battery"
+  }
+ ],
+ "vars": {
+  "index": 0
+ },
+ "activities": [
+  {
+   "name": "drive",
+   "start": "ToyRobot.drive_to",
+   "cancel": "ToyRobot.stop_driving",
+   "uses": [
+    "base"
+   ]
+  },
+  {
+   "name": "charge",
+   "start": "ToyRobot.start_charging",
+   "cancel": "ToyRobot.stop_charging",
+   "uses": []
+  }
+ ],
+ "resources": [
+  "base"
+ ],
+ "nodes": [
+  {
+   "name": "Mission",
+   "transitions": [],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [
+    "Patrolling",
+    "Charging"
+   ],
+   "parallel": [],
+   "initial": "Patrolling",
+   "outcomes": []
+  },
+  {
+   "name": "Patrolling",
+   "transitions": [
+    {
+     "goto": "Charging",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "battery_low"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [
+    "NextWaypoint",
+    "Driving",
+    "Pausing"
+   ],
+   "parallel": [],
+   "initial": "NextWaypoint",
+   "outcomes": []
+  },
+  {
+   "name": "NextWaypoint",
+   "transitions": [
+    {
+     "goto": "Driving",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "index < size(route)"
+    },
+    {
+     "goto": "Driving",
+     "mode": "graceful",
+     "set": {
+      "index": "0"
+     },
+     "on": null,
+     "after": null,
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Driving",
+   "transitions": [
+    {
+     "goto": "Pausing",
+     "mode": "graceful",
+     "set": {
+      "index": "index + 1"
+     },
+     "on": null,
+     "after": null,
+     "if": "succeeded"
+    },
+    {
+     "goto": "Pausing",
+     "mode": "graceful",
+     "set": {
+      "index": "index + 1"
+     },
+     "on": null,
+     "after": null,
+     "if": "failed"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "drive",
+   "args": {
+    "place": "route[index]"
+   },
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Pausing",
+   "transitions": [
+    {
+     "goto": "NextWaypoint",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": "pause_s",
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Charging",
+   "transitions": [
+    {
+     "goto": "Patrolling",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "done"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [
+    "GoingHome",
+    "OnCharger"
+   ],
+   "parallel": [],
+   "initial": "GoingHome",
+   "outcomes": [
+    "done"
+   ]
+  },
+  {
+   "name": "GoingHome",
+   "transitions": [
+    {
+     "goto": "OnCharger",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "succeeded"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "drive",
+   "args": {
+    "place": "'charger'"
+   },
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "OnCharger",
+   "transitions": [
+    {
+     "goto": "done",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "charged"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "charge",
+   "args": {},
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  }
+ ]
+}

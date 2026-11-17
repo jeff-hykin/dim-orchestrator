@@ -1,0 +1,111 @@
+{
+ "root": "Cell",
+ "constants": {
+  "pick_timeout_s": 3.0
+ },
+ "signals": [],
+ "events": [],
+ "vars": {
+  "gears": 0
+ },
+ "activities": [
+  {
+   "name": "pick",
+   "start": "ToyRobot.pick",
+   "cancel": "ToyRobot.release_arm",
+   "uses": [
+    "arm"
+   ]
+  },
+  {
+   "name": "place",
+   "start": "ToyRobot.place_item",
+   "cancel": "ToyRobot.release_arm",
+   "uses": [
+    "arm"
+   ]
+  }
+ ],
+ "resources": [
+  "arm"
+ ],
+ "nodes": [
+  {
+   "name": "Cell",
+   "transitions": [],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [
+    "Picking",
+    "Placing"
+   ],
+   "parallel": [],
+   "initial": "Picking",
+   "outcomes": []
+  },
+  {
+   "name": "Picking",
+   "transitions": [
+    {
+     "goto": "Placing",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "succeeded"
+    },
+    {
+     "goto": "Placing",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": "pick_timeout_s",
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "pick",
+   "args": {
+    "item": "'gear'"
+   },
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Placing",
+   "transitions": [
+    {
+     "goto": "Picking",
+     "mode": "graceful",
+     "set": {
+      "gears": "gears + 1"
+     },
+     "on": null,
+     "after": null,
+     "if": "succeeded"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "place",
+   "args": {
+    "item": "'gear'"
+   },
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  }
+ ]
+}

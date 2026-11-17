@@ -1,0 +1,357 @@
+{
+ "root": "Delivery",
+ "constants": {
+  "max_attempts": 3
+ },
+ "signals": [],
+ "events": [],
+ "vars": {
+  "attempts": 0,
+  "approved": false
+ },
+ "activities": [
+  {
+   "name": "drive",
+   "start": "ToyRobot.drive_to",
+   "cancel": "ToyRobot.stop_driving",
+   "uses": [
+    "base"
+   ]
+  },
+  {
+   "name": "pick",
+   "start": "ToyRobot.pick",
+   "cancel": "ToyRobot.release_arm",
+   "uses": [
+    "arm"
+   ]
+  },
+  {
+   "name": "place",
+   "start": "ToyRobot.place_item",
+   "cancel": "ToyRobot.release_arm",
+   "uses": [
+    "arm"
+   ]
+  },
+  {
+   "name": "speak",
+   "start": "ToyRobot.speak",
+   "cancel": null,
+   "uses": []
+  }
+ ],
+ "resources": [
+  "base",
+  "arm"
+ ],
+ "nodes": [
+  {
+   "name": "Delivery",
+   "transitions": [],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [
+    "Fetch",
+    "AwaitApproval",
+    "Deliver",
+    "Delivered",
+    "GaveUp"
+   ],
+   "parallel": [],
+   "initial": "Fetch",
+   "outcomes": []
+  },
+  {
+   "name": "Fetch",
+   "transitions": [
+    {
+     "goto": "AwaitApproval",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "done"
+    },
+    {
+     "goto": "GaveUp",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "failed"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [
+    "GoToShelf",
+    "Picking",
+    "PickRetry"
+   ],
+   "parallel": [],
+   "initial": "GoToShelf",
+   "outcomes": [
+    "done",
+    "failed"
+   ]
+  },
+  {
+   "name": "GoToShelf",
+   "transitions": [
+    {
+     "goto": "Picking",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "succeeded"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "drive",
+   "args": {
+    "place": "'shelf'"
+   },
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Picking",
+   "transitions": [
+    {
+     "goto": "done",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "succeeded"
+    },
+    {
+     "goto": "PickRetry",
+     "mode": "graceful",
+     "set": {
+      "attempts": "attempts + 1"
+     },
+     "on": null,
+     "after": null,
+     "if": "failed && attempts + 1 < max_attempts"
+    },
+    {
+     "goto": "failed",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "failed"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "pick",
+   "args": {
+    "item": "'parcel'"
+   },
+   "result": "held_item",
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "PickRetry",
+   "transitions": [
+    {
+     "goto": "Picking",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": "1.0",
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "AwaitApproval",
+   "transitions": [
+    {
+     "goto": "Deliver",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "approved"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "speak",
+   "args": {
+    "text": "'Ready to deliver the ' + held_item + '. Approve?'"
+   },
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Deliver",
+   "transitions": [
+    {
+     "goto": "Delivered",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "done"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [
+    "GoToDesk",
+    "HandingOver"
+   ],
+   "parallel": [],
+   "initial": "GoToDesk",
+   "outcomes": [
+    "done"
+   ]
+  },
+  {
+   "name": "GoToDesk",
+   "transitions": [
+    {
+     "goto": "HandingOver",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "succeeded"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "drive",
+   "args": {
+    "place": "'desk'"
+   },
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "HandingOver",
+   "transitions": [
+    {
+     "goto": "done",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "succeeded"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "place",
+   "args": {
+    "item": "held_item"
+   },
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Delivered",
+   "transitions": [
+    {
+     "goto": "Fetch",
+     "mode": "graceful",
+     "set": {
+      "approved": "false",
+      "attempts": "0"
+     },
+     "on": null,
+     "after": "4.0",
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "speak",
+   "args": {
+    "text": "'Delivered the ' + held_item"
+   },
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "GaveUp",
+   "transitions": [
+    {
+     "goto": "Fetch",
+     "mode": "graceful",
+     "set": {
+      "attempts": "0"
+     },
+     "on": null,
+     "after": "5.0",
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "speak",
+   "args": {
+    "text": "'Could not pick the parcel'"
+   },
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  }
+ ]
+}

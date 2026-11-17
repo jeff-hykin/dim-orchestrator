@@ -1224,8 +1224,22 @@ span.bb-link {
     }
 
     .file,
-    .bb-note {
+    .bb-note,
+    .wide-only {
         display: none;
+    }
+
+    .bar {
+        gap: 6px;
+        padding: 0 8px;
+    }
+
+    .title {
+        font-size: 11px;
+    }
+
+    .main {
+        overflow: hidden;
     }
 
     .main,

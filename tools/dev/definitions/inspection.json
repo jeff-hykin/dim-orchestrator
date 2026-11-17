@@ -1,0 +1,215 @@
+{
+ "root": "Inspection",
+ "constants": {
+  "min_found": 5
+ },
+ "signals": [
+  {
+   "name": "gripper_ok",
+   "stream": "ToyRobot.gripper_ok",
+   "field": "data"
+  }
+ ],
+ "events": [],
+ "vars": {
+  "calibrated": false,
+  "rescans": 0
+ },
+ "activities": [
+  {
+   "name": "drive",
+   "start": "ToyRobot.drive_to",
+   "cancel": "ToyRobot.stop_driving",
+   "uses": [
+    "base"
+   ]
+  },
+  {
+   "name": "scan",
+   "start": "ToyRobot.scan",
+   "cancel": "ToyRobot.stop_scan",
+   "uses": []
+  },
+  {
+   "name": "calibrate",
+   "start": "ToyRobot.calibrate",
+   "cancel": null,
+   "uses": []
+  },
+  {
+   "name": "speak",
+   "start": "ToyRobot.speak",
+   "cancel": null,
+   "uses": []
+  }
+ ],
+ "resources": [
+  "base",
+  "camera"
+ ],
+ "nodes": [
+  {
+   "name": "Inspection",
+   "transitions": [],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [
+    "Approach",
+    "Scanning",
+    "Rescan",
+    "Calibrating",
+    "Reporting"
+   ],
+   "parallel": [],
+   "initial": "Approach",
+   "outcomes": []
+  },
+  {
+   "name": "Approach",
+   "transitions": [
+    {
+     "goto": "Scanning",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "succeeded"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "drive",
+   "args": {
+    "place": "'bay 4'"
+   },
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Scanning",
+   "transitions": [
+    {
+     "goto": "Reporting",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "succeeded"
+    }
+   ],
+   "requires": [
+    {
+     "expect": [
+      "gripper_ok || calibrated"
+     ],
+     "fallback": "Calibrating"
+    }
+   ],
+   "ensures": [
+    {
+     "expect": [
+      "found >= min_found"
+     ],
+     "fallback": "Rescan"
+    }
+   ],
+   "claims": [
+    "camera"
+   ],
+   "activity": "scan",
+   "args": {
+    "area": "'bay 4'"
+   },
+   "result": "found",
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Rescan",
+   "transitions": [
+    {
+     "goto": "Scanning",
+     "mode": "graceful",
+     "set": {
+      "rescans": "rescans + 1"
+     },
+     "on": null,
+     "after": "1.5",
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Calibrating",
+   "transitions": [
+    {
+     "goto": "Scanning",
+     "mode": "graceful",
+     "set": {
+      "calibrated": "true"
+     },
+     "on": null,
+     "after": null,
+     "if": "succeeded"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "calibrate",
+   "args": {},
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Reporting",
+   "transitions": [
+    {
+     "goto": "Approach",
+     "mode": "graceful",
+     "set": {
+      "rescans": "0"
+     },
+     "on": null,
+     "after": "5.0",
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "speak",
+   "args": {
+    "text": "'Found ' + string(found) + ' objects after ' + string(rescans) + ' rescans'"
+   },
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  }
+ ]
+}

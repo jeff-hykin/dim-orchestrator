@@ -1,0 +1,351 @@
+{
+ "root": "Day",
+ "constants": {
+  "announce_s": 7.0
+ },
+ "signals": [],
+ "events": [],
+ "vars": {
+  "trips": 0,
+  "sorted": 0
+ },
+ "activities": [
+  {
+   "name": "drive",
+   "start": "ToyRobot.drive_to",
+   "cancel": "ToyRobot.stop_driving",
+   "uses": [
+    "base"
+   ]
+  },
+  {
+   "name": "pick",
+   "start": "ToyRobot.pick",
+   "cancel": "ToyRobot.release_arm",
+   "uses": [
+    "arm"
+   ]
+  },
+  {
+   "name": "place",
+   "start": "ToyRobot.place_item",
+   "cancel": "ToyRobot.release_arm",
+   "uses": [
+    "arm"
+   ]
+  },
+  {
+   "name": "speak",
+   "start": "ToyRobot.speak",
+   "cancel": null,
+   "uses": []
+  }
+ ],
+ "resources": [
+  "base",
+  "arm"
+ ],
+ "nodes": [
+  {
+   "name": "Day",
+   "transitions": [],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [
+    "Shift",
+    "Closing"
+   ],
+   "parallel": [],
+   "initial": "Shift",
+   "outcomes": []
+  },
+  {
+   "name": "Shift",
+   "transitions": [
+    {
+     "goto": "Closing",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "trips >= 6 && sorted >= 4"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [],
+   "parallel": [
+    "Courier",
+    "Sorter",
+    "Watchdog"
+   ],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Closing",
+   "transitions": [
+    {
+     "goto": "Shift",
+     "mode": "graceful",
+     "set": {
+      "trips": "0",
+      "sorted": "0"
+     },
+     "on": null,
+     "after": "3.0",
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "speak",
+   "args": {
+    "text": "'Shift over: ' + string(trips) + ' trips, ' + string(sorted) + ' sorted'"
+   },
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Courier",
+   "transitions": [],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [
+    "ToDockA",
+    "ToDockB"
+   ],
+   "parallel": [],
+   "initial": "ToDockA",
+   "outcomes": []
+  },
+  {
+   "name": "ToDockA",
+   "transitions": [
+    {
+     "goto": "ToDockB",
+     "mode": "graceful",
+     "set": {
+      "trips": "trips + 1"
+     },
+     "on": null,
+     "after": null,
+     "if": "succeeded"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "drive",
+   "args": {
+    "place": "'dock A'"
+   },
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "ToDockB",
+   "transitions": [
+    {
+     "goto": "ToDockA",
+     "mode": "graceful",
+     "set": {
+      "trips": "trips + 1"
+     },
+     "on": null,
+     "after": null,
+     "if": "succeeded"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "drive",
+   "args": {
+    "place": "'dock B'"
+   },
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Sorter",
+   "transitions": [],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [
+    "Picking",
+    "Placing",
+    "Resting"
+   ],
+   "parallel": [],
+   "initial": "Picking",
+   "outcomes": []
+  },
+  {
+   "name": "Picking",
+   "transitions": [
+    {
+     "goto": "Placing",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "succeeded"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "pick",
+   "args": {
+    "item": "'box'"
+   },
+   "result": "box",
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Placing",
+   "transitions": [
+    {
+     "goto": "Resting",
+     "mode": "graceful",
+     "set": {
+      "sorted": "sorted + 1"
+     },
+     "on": null,
+     "after": null,
+     "if": "succeeded"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "place",
+   "args": {
+    "item": "box"
+   },
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Resting",
+   "transitions": [
+    {
+     "goto": "Picking",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": "2.0",
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Watchdog",
+   "transitions": [],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [
+    "Listening",
+    "Announcing"
+   ],
+   "parallel": [],
+   "initial": "Listening",
+   "outcomes": []
+  },
+  {
+   "name": "Listening",
+   "transitions": [
+    {
+     "goto": "Announcing",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": "announce_s",
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Announcing",
+   "transitions": [
+    {
+     "goto": "Listening",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "succeeded"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "speak",
+   "args": {
+    "text": "string(trips) + ' trips, ' + string(sorted) + ' sorted'"
+   },
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  }
+ ]
+}

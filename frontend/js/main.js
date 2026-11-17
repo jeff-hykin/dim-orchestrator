@@ -400,4 +400,17 @@ async function run() {
 
 setStatus("searching")
 await celReady
-run()
+const preview = new URLSearchParams(location.search).get("preview")
+if (preview) {
+    // Draw a definition from a JSON file with nothing running, to check how a file lays out.
+    const definition = await (await fetch(preview)).json()
+    app.model = buildModel(definition)
+    graph.setModel(app.model)
+    panel.setModel(app.model)
+    app.history.add([{ seq: 1, time: Date.now() / 1000, item: { kind: "startup" }, effects: [], changed: { ...definition.constants, ...definition.vars }, removed: [], active: [definition.root], calls: [], timers: [], outcomes: [] }])
+    $("#file").textContent = preview.split("/").pop()
+    setStatus("stopped", "preview")
+    render("jump")
+} else {
+    run()
+}

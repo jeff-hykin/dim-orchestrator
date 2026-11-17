@@ -401,12 +401,14 @@ export class GraphView {
             return
         }
         const box = this.container.getBoundingClientRect()
-        const margin = 24
-        const k = Math.min(2, (box.width - margin * 2) / (this.layout.width + 60), (box.height - margin * 2) / (this.layout.height + 40))
+        // edge labels and loops can reach past the root's box, so fit what was actually drawn
+        const drawn = this.world.getBBox()
+        const margin = 16
+        const k = Math.min(2, (box.width - margin * 2) / Math.max(1, drawn.width), (box.height - margin * 2) / Math.max(1, drawn.height))
         this.view = {
             k,
-            x: (box.width - this.layout.width * k) / 2,
-            y: Math.max(margin, (box.height - this.layout.height * k) / 2) + 10 * k,
+            x: (box.width - drawn.width * k) / 2 - drawn.x * k,
+            y: (box.height - drawn.height * k) / 2 - drawn.y * k,
         }
         this.apply()
     }

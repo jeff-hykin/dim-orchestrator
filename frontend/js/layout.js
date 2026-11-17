@@ -13,6 +13,13 @@ export const HEADER = 30
  * @returns {{ rects: Map<string, {x: number, y: number, w: number, h: number}>, routes: Map<string, {x: number, y: number}[]>, width: number, height: number }}
  */
 export function layoutGraph(model, measure, labelWidth = () => 0, aspect = 1.6) {
+    // Inner nodes aim for one shape (square, wide or tall); keep whichever lets the whole graph fill the screen most.
+    const tries = [1, 2.5, 0.5].map((innerAspect) => layoutWith(model, measure, labelWidth, aspect, innerAspect))
+    const fill = (found) => Math.min(aspect / found.width, 1 / found.height)
+    return tries.reduce((best, found) => (fill(found) > fill(best) * 1.02 ? found : best))
+}
+
+function layoutWith(model, measure, labelWidth, aspect, innerAspect) {
     const local = new Map() // id -> { w, h, place: Map<childId, {x, y}> (centres, content-relative), routes }
     const childOf = (compound, id) => {
         let at = id
@@ -61,9 +68,12 @@ export function layoutGraph(model, measure, labelWidth = () => 0, aspect = 1.6) 
             }
             return boxes.length ? { x0, y0, x1, y1 } : { x0: 0, y0: 0, x1: 0, y1: 0 }
         }
+        // The root keeps whichever fills the screen larger; a node inside keeps whichever is closer to `innerAspect`.
         const misfit = (placement) => {
             const b = bounds(placement)
-            return Math.abs(Math.log(Math.max(1, b.x1 - b.x0) / Math.max(1, b.y1 - b.y0) / aspect))
+            const w = Math.max(1, b.x1 - b.x0) + PAD * 2
+            const h = Math.max(1, b.y1 - b.y0) + PAD * 2 + HEADER
+            return id === model.root ? -Math.min(aspect / w, 1 / h) : Math.abs(Math.log(w / h / innerAspect))
         }
         const placement = misfit(down) < misfit(across) ? down : across
         let { x0: minX, y0: minY, x1: maxX, y1: maxY } = bounds(placement)
