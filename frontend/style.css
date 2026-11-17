@@ -408,8 +408,8 @@ svg.graph:active {
 
 @keyframes entered {
     0% {
-        stroke-width: 7;
-        filter: drop-shadow(0 0 14px var(--primary));
+        stroke-width: 4;
+        filter: drop-shadow(0 0 7px var(--primary));
     }
 }
 
@@ -466,7 +466,7 @@ svg.graph:active {
 
 .spark {
     fill: var(--primary);
-    filter: drop-shadow(0 0 6px var(--primary));
+    filter: drop-shadow(0 0 3px var(--primary));
     pointer-events: none;
 }
 
@@ -474,7 +474,7 @@ svg.graph:active {
     0%,
     30% {
         stroke: var(--primary);
-        stroke-width: 4;
+        stroke-width: 2.6;
         stroke-opacity: 1;
     }
 }
@@ -562,17 +562,27 @@ svg.graph.picking .edge:not(.picked) .edge-line {
     padding: 4px 0 16px;
 }
 
+/* the latest transition and the calls under way: always the same height (it scrolls when more calls are out), so the
+   sections below never jump as it updates */
 .bb-flight {
     margin: 8px 12px 0;
-    padding: 8px 10px;
+    padding: 6px 10px;
     border: 1px solid var(--hair);
     border-radius: var(--radius);
     display: grid;
-    gap: 6px;
+    align-content: start;
+    gap: 4px;
+    height: 62px;
+    box-sizing: border-box;
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
-.bb-flight:empty {
-    display: none;
+.bb-flight:empty::before {
+    content: "no transition yet";
+    color: var(--muted-fg);
+    font-size: 11px;
+    font-style: italic;
 }
 
 .bb-flight.changed,
@@ -589,9 +599,10 @@ svg.graph.picking .edge:not(.picked) .edge-line {
 
 .bb-latest {
     display: flex;
-    flex-wrap: wrap;
     gap: 4px;
     align-items: baseline;
+    white-space: nowrap;
+    min-width: 0;
 }
 
 .bb-latest-from {
@@ -600,6 +611,8 @@ svg.graph.picking .edge:not(.picked) .edge-line {
 
 .bb-latest-cause {
     margin-left: auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
     font-family: var(--mono);
     font-size: 11px;
     color: var(--info);

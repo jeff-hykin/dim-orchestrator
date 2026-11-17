@@ -93,9 +93,10 @@ function layoutWith(model, measure, labelWidth, aspect, innerAspect, arcs) {
                     continue
                 }
                 const bends = placement.routes.get(linkEdges.indexOf(edge.id)) ?? []
-                const { points, mid } = sampleSegments(edgeShape(model, edge, from, to, bends, labelWidth, arcs ? placement === down : null))
+                const shape = edgeShape(model, edge, from, to, bends, labelWidth, arcs ? placement === down : null)
+                const { points, mid } = sampleSegments(shape)
                 points.forEach((point) => grow({ ...point, w: 0, h: 0 }))
-                grow(labelBox(mid, labelWidth(edge)))
+                grow(labelBox(mid, labelWidth(edge), shape.labelShift))
             }
             return boxes.length ? { x0, y0, x1, y1 } : { x0: 0, y0: 0, x1: 0, y1: 0 }
         }
@@ -172,21 +173,46 @@ export function edgeSegments(model, edge, from, to, bends, labelWidth) {
     const toCentre = { x: to.x + to.w / 2, y: to.y + to.h / 2 }
     const twins = model.edges.filter((other) => (other.from === edge.from && other.to === edge.to) || (other.from === edge.to && other.to === edge.from))
     if (twins.length > 1 && bends.length === 0) {
-        const length = Math.hypot(toCentre.x - fromCentre.x, toCentre.y - fromCentre.y) || 1
-        const k = twins.indexOf(edge) - (twins.length - 1) / 2
-        const sign = edge.from < edge.to ? 1 : -1
-        // Spread twins so their labels sit side by side: by label width across a vertical edge, by label height along a horizontal one.
-        const across = Math.abs(toCentre.y - fromCentre.y) > Math.abs(toCentre.x - fromCentre.x)
-        const step = across ? Math.max(...twins.map((twin) => labelWidth(twin))) + 8 : 26
-        const offset = k * step * sign
-        // bow out from the middle of the gap between the two boxes (the centres' midpoint can sit inside a big compound)
-        const a = boundaryPoint(from, toCentre)
-        const b = boundaryPoint(to, fromCentre)
-        bends = [{ x: (a.x + b.x) / 2 - ((toCentre.y - fromCentre.y) / length) * offset, y: (a.y + b.y) / 2 + ((toCentre.x - fromCentre.x) / length) * offset }]
+        return twinSegments(from, to, twins.indexOf(edge), twins.length)
     }
     const start = boundaryPoint(from, bends[0] ?? toCentre, 1)
     const end = boundaryPoint(to, bends.at(-1) ?? fromCentre, 3)
     return smoothSegments([start, ...bends, end])
+}
+
+/**
+ * One of several transitions between the same two nodes: each gets its own lane, a port beside the others on the
+ * facing sides, and runs straight across; their labels are staggered along the way so they never sit on each other.
+ */
+function twinSegments(from, to, index, count) {
+    const gapY = Math.max(to.y - (from.y + from.h), from.y - (to.y + to.h))
+    const gapX = Math.max(to.x - (from.x + from.w), from.x - (to.x + to.w))
+    const vertical = gapY >= gapX
+    const room = (vertical ? Math.min(from.w, to.w) : Math.min(from.h, to.h)) - 16
+    const step = Math.min(22, room / Math.max(1, count - 1))
+    const offset = (index - (count - 1) / 2) * step
+    const centre = (rect) => ({ x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 })
+    const [a, b] = [centre(from), centre(to)]
+    let start
+    let end
+    if (vertical) {
+        const down = b.y > a.y
+        start = { x: a.x + offset, y: down ? from.y + from.h : from.y }
+        end = { x: b.x + offset, y: down ? to.y - 3 : to.y + to.h + 3 }
+    } else {
+        const right = b.x > a.x
+        start = { x: right ? from.x + from.w : from.x, y: a.y + offset }
+        end = { x: right ? to.x - 3 : to.x + to.w + 3, y: b.y + offset }
+    }
+    const half = vertical ? (end.y - start.y) / 2 : (end.x - start.x) / 2
+    const segments = [[start, vertical ? { x: start.x, y: start.y + half } : { x: start.x + half, y: start.y }, vertical ? { x: end.x, y: end.y - half } : { x: end.x - half, y: end.y }, end]]
+    if (count === 2) {
+        // two lanes: each label sits beside its own lane, on the outer side, so both read at the same height
+        segments.labelShift = vertical ? { x: index ? 1 : -1, y: 0 } : { x: 0, y: index ? 1 : -1 }
+    } else {
+        segments.labelAt = (index + 1) / (count + 1)
+    }
+    return segments
 }
 
 /** A smooth curve through points (Catmull-Rom as cubic Béziers). */
@@ -208,7 +234,7 @@ export function segmentsPath(segments) {
     return segments.length ? `M${f(segments[0][0])}` + segments.map(([, c1, c2, p]) => ` C${f(c1)} ${f(c2)} ${f(p)}`).join("") : ""
 }
 
-/** Points along the curve, and the one halfway along it (where the label sits). */
+/** Points along the curve, and the one its label sits on (halfway, unless the curve says `labelAt`). */
 export function sampleSegments(segments, perSegment = 16) {
     const points = []
     for (const [a, b, c, d] of segments) {
@@ -225,13 +251,14 @@ export function sampleSegments(segments, perSegment = 16) {
     for (let i = 1; i < points.length; i++) {
         lengths.push(lengths[i - 1] + Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y))
     }
-    const half = lengths.at(-1) / 2
-    const mid = points[Math.max(0, lengths.findIndex((length) => length >= half))] ?? points[0]
+    const at = lengths.at(-1) * (segments.labelAt ?? 0.5)
+    const mid = points[Math.max(0, lengths.findIndex((length) => length >= at))] ?? points[0]
     return { points, mid }
 }
 
-/** An edge label's box around the point it is centred on (the label's text plus its padding, 18 high). */
-export const labelBox = (mid, width) => ({ x: mid.x - width / 2, y: mid.y - 9, w: width, h: 18 })
+/** An edge label's box around the point it is centred on (the label's text plus its padding, 18 high), moved by `shift`
+ * (in half-sizes) to one side of it. */
+export const labelBox = (mid, width, shift = { x: 0, y: 0 }) => ({ x: mid.x - width / 2 + shift.x * (width / 2 + 4), y: mid.y - 9 + shift.y * 12, w: width, h: 18 })
 
 /**
  * An edge's curve: dimos-react's arc when `vertical` is given (true or false: which way its container flows), else

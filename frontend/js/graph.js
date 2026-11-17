@@ -2,7 +2,7 @@
 // transition the engine takes played along its edge.
 
 import { namesFor } from "./details.js"
-import { boundaryPoint, edgeShape, HEADER, layoutGraph, PAD, segmentsPath } from "./layout.js"
+import { boundaryPoint, edgeShape, HEADER, labelBox, layoutGraph, PAD, segmentsPath } from "./layout.js"
 import { layoutElk } from "./layout_elk.js"
 
 // how the graph is laid out and its edges drawn: our own nested layout with curves, or ELK with one of its routings
@@ -69,7 +69,7 @@ export class GraphView {
         this.root = svg("svg", { class: "graph" }, container)
         const defs = svg("defs", {}, this.root)
         for (const [id, cls] of [["arrow", "arrow"], ["arrow-hot", "arrow hot"], ["arrow-fallback", "arrow fallback"]]) {
-            const marker = svg("marker", { id: `orch-${id}`, viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: "auto-start-reverse" }, defs)
+            const marker = svg("marker", { id: `orch-${id}`, viewBox: "0 0 10 10", refX: 10, refY: 5, markerWidth: 10, markerHeight: 10, markerUnits: "userSpaceOnUse", orient: "auto-start-reverse" }, defs)
             svg("path", { d: "M0,0 L10,5 L0,10 z", class: cls }, marker)
         }
         this.world = svg("g", { class: "world" }, this.root)
@@ -109,7 +109,7 @@ export class GraphView {
 
     subtitle(node) {
         const activity = node.def?.activity ? this.model.activities.get(node.def.activity) : null
-        return activity ? `${activity.name} → ${activity.start}` : ""
+        return activity ? activity.start : ""
     }
 
     chips(node) {
@@ -264,6 +264,8 @@ export class GraphView {
         const to = this.layout.rects.get(edge.to)
         let d
         let labelAt = null
+        let labelFraction = 0.5
+        let labelShift
         if (edge.kind === "initial") {
             // where a container starts: an arrow from its top-left corner to the entry node
             const box = this.layout.rects.get(edge.node)
@@ -286,7 +288,10 @@ export class GraphView {
                 return
             }
             const vertical = this.style === "arcs" ? (this.layout.vertical.get(edge.id) ?? false) : null
-            d = segmentsPath(edgeShape(this.model, edge, from, to, this.layout.routes.get(edge.id) ?? [], this.labelWidth, vertical))
+            const segments = edgeShape(this.model, edge, from, to, this.layout.routes.get(edge.id) ?? [], this.labelWidth, vertical)
+            d = segmentsPath(segments)
+            labelFraction = segments.labelAt ?? 0.5
+            labelShift = segments.labelShift
         }
         const immediate = edge.transition?.mode === "immediate"
         const cls = ["edge", `edge-${edge.kind}`, immediate ? "edge-immediate" : ""].join(" ")
@@ -294,17 +299,32 @@ export class GraphView {
         const marker = edge.kind === "requires" || edge.kind === "ensures" ? "arrow-fallback" : "arrow"
         const path = svg("path", { d, class: "edge-line", "marker-end": `url(#orch-${marker})` }, group)
         const hit = svg("path", { d, class: "edge-hit" }, group)
+        if (edge.kind === "transition") {
+            // the line stops a few pixels inside the arrowhead, where the head is wider than the line, so none of it shows past the tip
+            const length = path.getTotalLength()
+            path.style.strokeDasharray = `${Math.max(0, length - 4)} ${length}`
+        }
         const label = edgeLabel(edge)
         let labelGroup = null
         if (label) {
-            const mid = labelAt ?? path.getPointAtLength(path.getTotalLength() / 2)
+            const mid = labelAt ?? path.getPointAtLength(path.getTotalLength() * labelFraction)
             labelGroup = svg("g", { class: `edge-label edge-label-${edge.kind}${immediate ? " edge-label-immediate" : ""}`, "data-id": edge.id }, labelLayer)
             const background = svg("rect", { class: "edge-label-bg" }, labelGroup)
             const text = svg("text", { x: mid.x, y: mid.y + 4, "text-anchor": "middle" }, labelGroup)
             this.colorNames(text, (immediate ? "⚡ " : "") + label + (Object.keys(edge.transition?.set ?? {}).length ? " ✎" : ""))
             const w = text.getComputedTextLength() || text.textContent.length * 6.4
-            for (const [key, value] of Object.entries({ x: mid.x - w / 2 - 7, y: mid.y - 9, width: w + 14, height: 18 })) {
-                background.setAttribute(key, value)
+            if (labelShift) {
+                // beside its lane rather than on it
+                const box = labelBox(mid, w + 14, labelShift)
+                text.setAttribute("x", box.x + box.w / 2)
+                text.setAttribute("y", box.y + 13)
+                for (const [key, value] of Object.entries({ x: box.x, y: box.y, width: box.w, height: 18 })) {
+                    background.setAttribute(key, value)
+                }
+            } else {
+                for (const [key, value] of Object.entries({ x: mid.x - w / 2 - 7, y: mid.y - 9, width: w + 14, height: 18 })) {
+                    background.setAttribute(key, value)
+                }
             }
         }
         for (const element of [hit, labelGroup].filter(Boolean)) {
@@ -419,7 +439,7 @@ export class GraphView {
             void element.getBoundingClientRect()
             element.classList.add("fired")
         }
-        const spark = dot(0, 0, 5, "spark", edge.group)
+        const spark = dot(0, 0, 3.5, "spark", edge.group)
         const length = edge.path.getTotalLength()
         const started = performance.now()
         const duration = 650
@@ -427,8 +447,8 @@ export class GraphView {
             const t = Math.min(1, (now - started) / duration)
             const eased = 1 - (1 - t) ** 3
             const point = edge.path.getPointAtLength(length * eased)
-            spark.setAttribute("x", point.x - 5)
-            spark.setAttribute("y", point.y - 5)
+            spark.setAttribute("x", point.x - 3.5)
+            spark.setAttribute("y", point.y - 3.5)
             if (t < 1) {
                 requestAnimationFrame(step)
             } else {
