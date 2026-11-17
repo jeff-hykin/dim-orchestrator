@@ -148,9 +148,22 @@ export function nodeDetails(model, id, step) {
         { class: "details" },
         h("div", { class: "d-title" }, def.name, h("span", { class: `d-state ${active ? "on" : ""}` }, active ? "active" : "inactive")),
         h("div", { class: "d-sub" }, kind, node.parent ? ` inside ${node.parent}` : " (root)"),
-        active && call ? row("call", mono(`${call.rpc}`), h("span", { class: `d-chip ${call.phase}` }, call.phase === "held" ? "held: waiting on a resource" : "running")) : null,
-        outcome ? row("outcome", h("span", { class: `d-chip ${outcome}` }, outcome)) : null,
-        timers.length && step ? row("timer", ...timers.map((t) => h("span", { class: "d-chip" }, `transition ${t.transition + 1} in ${Math.max(0, t.due - step.time).toFixed(1)}s`))) : null,
+        // what the node is doing right now, always one line, so the panel keeps its height as it changes
+        h(
+            "div",
+            { class: "d-row d-now" },
+            h("span", { class: "d-label" }, "now"),
+            h(
+                "span",
+                { class: "d-value" },
+                ...[
+                    active && call ? h("span", { class: `d-chip ${call.phase}`, title: call.rpc }, call.phase === "held" ? "held: waiting on a resource" : `calling ${call.rpc}`) : null,
+                    outcome ? h("span", { class: `d-chip ${outcome}` }, outcome) : null,
+                    ...(step ? timers.map((t) => h("span", { class: "d-chip" }, `transition ${t.transition + 1} in ${Math.max(0, t.due - step.time).toFixed(1)}s`)) : []),
+                ].filter(Boolean),
+                !(active && call) && !outcome && !(step && timers.length) ? h("span", { class: "d-idle" }, active ? "active" : "idle") : null,
+            ),
+        ),
         activity
             ? h(
                 "div",
