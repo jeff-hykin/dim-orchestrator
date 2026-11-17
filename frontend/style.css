@@ -57,15 +57,6 @@ code,
     min-width: 0;
 }
 
-.title {
-    font-family: var(--display);
-    font-weight: var(--heading-weight, 600);
-    text-transform: var(--label-case);
-    letter-spacing: var(--track-label);
-    color: var(--head-color, var(--fg));
-    white-space: nowrap;
-}
-
 .file {
     font-family: var(--mono);
     color: var(--muted-fg);
@@ -1232,10 +1223,6 @@ span.bb-link {
     .bar {
         gap: 6px;
         padding: 0 8px;
-    }
-
-    .title {
-        font-size: 11px;
     }
 
     .main {
