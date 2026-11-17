@@ -135,11 +135,12 @@ export class BlackboardPanel {
             preview,
             editButton,
         )
-        const element = h("div", { class: "bb-row", "data-key": key }, line, h("div", { class: "bb-detail" }, sources, full))
+        // An event's condition gets its own box above the details ("<name> when", then the condition), and the
+        // details below hold only the transitions it drives.
+        const when = event ? h("div", { class: "bb-when" }, h("div", { class: "bb-when-head" }, h("span", { class: "bb-when-name" }, key), " when"), h("div", { class: "bb-when-body" }, renderCel(event.when, names))) : null
+        const element = h("div", { class: "bb-row", "data-key": key }, line, when, h("div", { class: "bb-detail" }, sources, event ? null : full))
         if (event) {
             preview.append(renderCel(event.when, names))
-            full.append(renderCel(event.when, names))
-            // an event's condition takes the box's full width, with the transitions it drives below
             element.classList.add("wide")
         }
         this.sections.get(group).body.append(element)

@@ -877,6 +877,49 @@ svg.graph.picking .edge:not(.picked) .arrow-head {
     display: grid;
 }
 
+/* an opened event's condition: a blue box of its own, above (and outside) the details' colored bar */
+.bb-when {
+    display: none;
+    margin: 0 0 6px 24px;
+    border: 1px solid var(--primary);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+
+.bb-row.expanded .bb-when {
+    display: block;
+}
+
+.bb-when-head {
+    padding: 2px 8px;
+    font-size: 10.5px;
+    color: var(--primary);
+    background: var(--primary-soft, var(--sel));
+}
+
+.bb-when-name {
+    font-family: var(--mono);
+    font-weight: 600;
+}
+
+.bb-when-body {
+    padding: 6px 8px;
+    white-space: nowrap;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 11.5px;
+}
+
+.bb-events .bb-detail {
+    height: 88px;
+}
+
+.bb-row.wide.bb-events .bb-sources,
+.bb-events .bb-row.wide .bb-sources {
+    border-top: none;
+    padding-top: 0;
+}
+
 .bb-sources {
     display: flex;
     flex-direction: column;
