@@ -4,7 +4,7 @@
 import * as api from "./api.js"
 import { BlackboardPanel } from "./blackboard.js"
 import { ready as celReady } from "./cel.js"
-import { edgeDetails, nodeDetails, valueDetails } from "./details.js"
+import { edgeDetails, namesFor, nodeDetails, valueDetails } from "./details.js"
 import { GraphView, LAYOUT_STYLES } from "./graph.js"
 import { History } from "./history.js"
 import { SourceView } from "./source.js"
@@ -443,6 +443,7 @@ async function follow(moduleId, generation) {
     }
     app.moduleId = moduleId
     source.setSource(found.file, found.source)
+    source.setNames(namesFor(app.model, {}))
     if (!history.steps.length && first.oldest > 1) {
         history.seed(snapshot)
         first = await api.getJournal(moduleId, snapshot.seq)

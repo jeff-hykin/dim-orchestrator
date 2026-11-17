@@ -3,6 +3,7 @@
 // checks it before using it; a YAML edit is converted back to TOML first.
 
 import { h } from "./details.js"
+import { highlightOrchestratorYaml } from "./yaml_highlight.js"
 import { isScalar, parseToml, parseYaml, stringifyToml, visitYaml, YamlDocument } from "../vendor/formats/formats.js"
 
 /** TOML text as YAML, lists of plain values kept on one line. */
@@ -16,11 +17,6 @@ export function tomlToYaml(source) {
         },
     })
     return document.toString({ lineWidth: 0 })
-}
-
-/** YAML as colored spans: comments, keys, strings, numbers, booleans and null. */
-export function highlightYaml(source) {
-    return paintTokens(source, /((?:^|(?<=[ \t]))#[^\n]*)|("(?:[^"\\\n]|\\.)*"?|'(?:[^'\n]|'')*'?)|((?<=^[ \t]*(?:-[ \t]+)?)[^\s#:'"\[\]{},-][^:#\n]*?(?=:(?:[ \t]|$)))|\b(true|false|null)\b|((?<=[:\[,-][ \t]*)-?\d[\d_]*(?:\.\d+)?(?:[eE][+-]?\d+)?(?=[ \t]*(?:$|[,\]#])))/gm, ["t-com", "t-str", "t-key", "t-bool", "t-num"])
 }
 
 function paintTokens(source, token, kinds) {
@@ -115,6 +111,12 @@ export class SourceView {
         this.paint(this.input.value)
     }
 
+    /** What the blackboard knows (names and their kinds), so CEL in the YAML colors names as the blackboard does. */
+    setNames(names) {
+        this.names = names
+        this.paint(this.input.value)
+    }
+
     /** Editing needs an orchestrator to send the file to. */
     setEditable(editable) {
         this.editable = editable
@@ -135,7 +137,7 @@ export class SourceView {
 
     paint(text) {
         // a trailing newline keeps the last line's height when the text ends in one
-        this.code.replaceChildren(...(this.format === "yaml" ? highlightYaml(text) : highlightToml(text)), "\n")
+        this.code.replaceChildren(...(this.format === "yaml" ? highlightOrchestratorYaml(text, this.names) : highlightToml(text)), "\n")
     }
 
     edit() {

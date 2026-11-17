@@ -24,6 +24,7 @@ which nodes are active, each transition as it fires, the blackboard, and a rewin
     (tree-sitter, `frontend/vendor/`), and the bottom timeline.
   - `friendly.js`: a blackboard value drawn for people (objects as tables, lists as chips that turn into a column
     when they don't fit), used in an opened blackboard row.
+  - `yaml_highlight.js`: the YAML view's highlighting, which knows the file format (CEL fields, RPCs, nodes, outcomes).
   - `source.js`: the file over the graph, as its TOML or converted to YAML, highlighted and editable; Apply calls the
     `set_source` RPC (a YAML edit is converted back to TOML first), which checks the text against the running
     blueprint and restarts the engine on it. The converters are vendored: `frontend/vendor/formats/`, rebuilt by

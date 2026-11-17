@@ -1773,6 +1773,71 @@ span.bb-link {
     color: var(--code-kw, var(--accent-alt));
 }
 
+/* what the orchestrator's YAML means, beyond YAML itself (yaml_highlight.js) */
+.t-punct {
+    color: var(--muted-fg);
+}
+
+.t-op {
+    color: var(--code-kw, var(--accent-alt));
+}
+
+.t-func {
+    color: var(--code-func, var(--info));
+}
+
+.t-rpc {
+    color: var(--code-func, var(--info));
+    text-decoration: underline dotted color-mix(in srgb, var(--code-func, var(--info)) 50%, transparent);
+}
+
+.t-node {
+    color: var(--fg);
+    font-weight: 600;
+}
+
+.t-activity {
+    color: var(--fg);
+    font-style: italic;
+}
+
+.t-ident {
+    color: var(--code-fg, var(--fg));
+}
+
+.t-ok {
+    color: var(--ok);
+}
+
+.t-bad {
+    color: var(--danger);
+}
+
+.t-k-signals {
+    color: var(--kind-signals);
+}
+
+.t-k-vars {
+    color: var(--kind-vars);
+}
+
+.t-k-results {
+    color: var(--kind-results);
+}
+
+.t-k-event {
+    color: var(--kind-event);
+}
+
+.t-k-constants {
+    color: var(--kind-constants);
+    text-decoration: underline dotted;
+}
+
+.t-k-outcome {
+    color: var(--ok);
+}
+
 .src-problems {
     max-height: 30%;
     overflow: auto;
