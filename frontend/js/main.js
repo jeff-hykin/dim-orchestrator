@@ -256,13 +256,20 @@ function shownStep() {
  * Show the current step. "live" and "step" animate what changed since the step shown before; "jump" does not.
  * @param {"live" | "step" | "jump"} mode
  */
+addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+        render("jump")
+    }
+})
+
 function render(mode) {
     const step = shownStep()
     if (!step || !app.model) {
         return
     }
     const steps = app.history.steps
-    const animate = mode !== "jump"
+    // A hidden tab holds its animations back and plays them all at once when shown again, so while hidden it only jumps.
+    const animate = mode !== "jump" && !document.hidden
     let recent = step
     for (let i = steps.indexOf(step); i >= 0; i--) {
         if (steps[i].effects.some((effect) => effect.kind === "transition" || effect.kind === "fault")) {

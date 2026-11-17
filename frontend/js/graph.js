@@ -471,6 +471,9 @@ export class GraphView {
     }
 
     fire(edgeId) {
+        if (document.hidden) {
+            return
+        }
         const edge = this.edgeEls.get(edgeId)
         if (!edge) {
             return
