@@ -19,6 +19,8 @@ which nodes are active, each transition as it fires, the blackboard, and a rewin
   - `history.js`: every step seen, with the blackboard rebuilt at each one (the rewind store).
   - `blackboard.js`, `details.js`, `cel.js`, `timeline.js`: the right-hand table, hover/tap details, CEL highlighting
     (tree-sitter, `frontend/vendor/`), and the bottom timeline.
+  - `friendly.js`: a blackboard value drawn for people (objects as tables, lists as chips that turn into a column
+    when they don't fit), used in an opened blackboard row.
   - `source.js`: the file over the graph, as its TOML or converted to YAML, highlighted and editable; Apply calls the
     `set_source` RPC (a YAML edit is converted back to TOML first), which checks the text against the running
     blueprint and restarts the engine on it. The converters are vendored: `frontend/vendor/formats/`, rebuilt by

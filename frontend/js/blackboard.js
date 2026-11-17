@@ -2,7 +2,8 @@
 // step changed flashing, and links to whatever writes each key.
 
 import { renderCel } from "./cel.js"
-import { h, namesFor, publisherOf, renderJson, renderJsonLine } from "./details.js"
+import { h, namesFor, publisherOf, renderJsonLine } from "./details.js"
+import { fitLists, renderFriendly } from "./friendly.js"
 import { edgeLabel } from "./graph.js"
 import { groupOf } from "./model.js"
 
@@ -161,7 +162,10 @@ export class BlackboardPanel {
             return
         }
         row.drawn = row.last
-        row.full.replaceChildren(row.last == null ? h("span", { class: "j-null" }, "unset") : h("pre", { class: "bb-json" }, renderJson(row.value)))
+        // a list or an object takes the box's full width, with what writes and reads it below
+        row.element.classList.toggle("wide", row.value !== null && typeof row.value === "object")
+        row.full.replaceChildren(row.last == null ? h("span", { class: "fj-empty" }, "unset") : renderFriendly(row.value))
+        requestAnimationFrame(() => fitLists(row.full))
     }
 
     updateCount(group) {

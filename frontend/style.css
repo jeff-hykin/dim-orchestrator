@@ -885,6 +885,23 @@ button.bb-src:hover {
     font-size: 11.5px;
     line-height: 1.6;
     text-align: right;
+    overflow-x: auto; /* long text scrolls sideways rather than wrapping */
+}
+
+/* a list or an object: the value across the whole box, what writes and reads it underneath */
+.bb-row.wide .bb-detail {
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+}
+
+.bb-row.wide .bb-full {
+    order: -1;
+    text-align: left;
+}
+
+.bb-row.wide .bb-sources {
+    padding-top: 6px;
+    border-top: 1px solid var(--hair);
 }
 
 .bb-full .bb-json {
@@ -975,6 +992,96 @@ span.bb-link {
     border-radius: var(--radius-sm);
     padding: 3px 10px;
     cursor: pointer;
+}
+
+/* a value for people (friendly.js): no braces or quotes */
+.fj-str {
+    white-space: pre;
+    color: var(--fg);
+}
+
+.fj-num {
+    font-family: var(--mono);
+    color: var(--code-num, var(--warn));
+}
+
+.fj-bool.fj-true {
+    color: var(--ok);
+}
+
+.fj-bool.fj-false {
+    color: var(--danger);
+}
+
+.fj-empty {
+    color: var(--muted-fg);
+    font-style: italic;
+}
+
+.fj-table {
+    display: inline-grid;
+    grid-template-columns: max-content minmax(0, auto);
+    gap: 2px 12px;
+    text-align: left;
+    align-items: baseline;
+}
+
+.fj-key {
+    color: var(--muted-fg);
+    font-size: 10.5px;
+}
+
+.fj-value {
+    min-width: 0;
+}
+
+.fj-value > .fj-table {
+    padding-left: 8px;
+    border-left: 1px solid var(--hair);
+}
+
+.fj-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    max-width: 100%;
+}
+
+/* fits on one line: items side by side, each in a soft chip */
+.fj-inline {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    gap: 4px;
+    overflow: hidden;
+    vertical-align: top;
+}
+
+.fj-inline > .fj-item {
+    flex: none;
+    padding: 0 6px;
+    border-radius: var(--radius-sm);
+    background: var(--hover);
+}
+
+/* too wide: one item per line, numbered */
+.fj-column {
+    display: inline-flex;
+    flex-direction: column;
+    text-align: left;
+    counter-reset: fj;
+}
+
+.fj-column > .fj-item {
+    display: grid;
+    grid-template-columns: 20px minmax(0, auto);
+    counter-increment: fj;
+}
+
+.fj-column > .fj-item::before {
+    content: counter(fj);
+    color: var(--muted-fg);
+    font-family: var(--mono);
+    font-size: 10px;
 }
 
 /* JSON */
