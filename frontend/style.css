@@ -782,6 +782,15 @@ svg.graph.picking .edge:not(.picked) .edge-line {
     font-size: 11.5px;
 }
 
+/* values read right-aligned, next to the edit button; an event's expression reads from the left */
+.bb-preview {
+    text-align: right;
+}
+
+.bb-events .bb-preview {
+    text-align: left;
+}
+
 .bb-preview .pill {
     line-height: 1.3;
 }
