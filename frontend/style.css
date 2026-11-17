@@ -227,18 +227,23 @@ svg.graph:active {
     rx: 0;
 }
 
+/* a container wears its own theme hue (--hue, set per node): a faint wash, a tinted border and header */
 .compound-box {
-    /* a faint wash of the text color, so each level of nesting reads a little lighter than the one around it */
-    fill: var(--fg);
-    fill-opacity: 0.045;
-    stroke: var(--border);
+    fill: var(--hue, var(--fg));
+    fill-opacity: 0.06;
+    stroke: color-mix(in srgb, var(--hue, var(--fg)) 45%, transparent);
     stroke-width: 1.2;
 }
 
 .compound-head {
-    fill: var(--raised);
-    fill-opacity: 0.5;
+    fill: var(--hue, var(--fg));
+    fill-opacity: 0.12;
     stroke: none;
+}
+
+.node-compound > .node-name,
+.node-parallel > .node-name {
+    fill: color-mix(in srgb, var(--hue, var(--fg)) 70%, var(--fg));
 }
 
 .node-parallel > .compound-box {

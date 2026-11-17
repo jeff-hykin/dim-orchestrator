@@ -16,6 +16,9 @@ const svg = (tag, attrs = {}, parent) => {
 // a dot is a rect whose corners follow the theme's --radius-round (square on a sharp skin)
 const dot = (cx, cy, r, className, parent) => svg("rect", { x: cx - r, y: cy - r, width: 2 * r, height: 2 * r, rx: r, class: `dot ${className}` }, parent)
 
+// theme colors a container can wear (--primary is left for the active state, --danger for faults)
+const HUES = ["--cat-2", "--cat-3", "--cat-4", "--accent-alt", "--info"]
+
 const short = (text, length = 26) => (text.length > length ? `${text.slice(0, length - 1)}…` : text)
 
 /** The words an edge's label carries. */
@@ -143,6 +146,17 @@ export class GraphView {
             return n
         }
         const ordered = [...model.nodes.values()].sort((a, b) => depth(a.id) - depth(b.id))
+        // Each node with children gets a theme hue, picked from its name, never the same as its parent's or the sibling before it.
+        this.hues = new Map()
+        for (const node of ordered.filter((one) => one.inside.length)) {
+            const siblings = model.nodes.get(node.parent)?.inside.filter((id) => model.nodes.get(id)?.inside.length) ?? []
+            const taken = [this.hues.get(node.parent), this.hues.get(siblings[siblings.indexOf(node.id) - 1])]
+            let hue = [...node.id].reduce((sum, char) => (sum * 31 + char.charCodeAt(0)) >>> 0, 7) % HUES.length
+            while (taken.includes(hue)) {
+                hue = (hue + 1) % HUES.length
+            }
+            this.hues.set(node.id, hue)
+        }
         for (const node of ordered) {
             this.drawNode(nodeLayer, node, layout.rects.get(node.id))
         }
@@ -163,6 +177,7 @@ export class GraphView {
             dot(cx, rect.y + 13, 6, `final-core final-${node.outcome}`, group)
             svg("text", { x: cx, y: rect.y + 37, class: "final-label", "text-anchor": "middle" }, group).textContent = node.outcome
         } else if (node.kind === "compound" || node.kind === "parallel") {
+            group.style.setProperty("--hue", `var(${HUES[this.hues.get(node.id)]})`)
             svg("rect", { x: rect.x, y: rect.y, width: rect.w, height: rect.h, class: "box compound-box" }, group)
             svg("rect", { x: rect.x, y: rect.y, width: rect.w, height: HEADER, class: "compound-head" }, group)
             svg("text", { x: rect.x + 14, y: rect.y + 20, class: "node-name" }, group).textContent = node.id
