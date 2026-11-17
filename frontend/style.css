@@ -446,12 +446,35 @@ svg.graph:active {
     stroke-width: 2.2;
 }
 
-.arrow {
+.arrow-head {
     fill: var(--muted-fg);
+    fill-opacity: 0.9;
+    transition: fill 0.4s;
 }
 
-.arrow.fallback {
+.edge-requires .arrow-head,
+.edge-ensures .arrow-head {
     fill: var(--warn);
+}
+
+.edge-immediate .arrow-head {
+    fill: var(--danger);
+}
+
+.edge.hover .arrow-head,
+.edge.picked .arrow-head {
+    fill: var(--fg);
+}
+
+.edge.fired .arrow-head {
+    animation: fired-head 1.6s ease-out;
+}
+
+@keyframes fired-head {
+    0%,
+    30% {
+        fill: var(--primary);
+    }
 }
 
 .edge.hover .edge-line,
@@ -524,6 +547,10 @@ svg.graph:active {
 
 svg.graph.picking .edge:not(.picked) .edge-line {
     stroke-opacity: 0.25;
+}
+
+svg.graph.picking .edge:not(.picked) .arrow-head {
+    fill-opacity: 0.25;
 }
 
 /* ---------------------------------------------------------------- blackboard */

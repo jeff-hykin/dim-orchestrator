@@ -67,11 +67,6 @@ export class GraphView {
         this.container = container
         this.handlers = handlers
         this.root = svg("svg", { class: "graph" }, container)
-        const defs = svg("defs", {}, this.root)
-        for (const [id, cls] of [["arrow", "arrow"], ["arrow-hot", "arrow hot"], ["arrow-fallback", "arrow fallback"]]) {
-            const marker = svg("marker", { id: `orch-${id}`, viewBox: "0 0 10 10", refX: 10, refY: 5, markerWidth: 10, markerHeight: 10, markerUnits: "userSpaceOnUse", orient: "auto-start-reverse" }, defs)
-            svg("path", { d: "M0,0 L10,5 L0,10 z", class: cls }, marker)
-        }
         this.world = svg("g", { class: "world" }, this.root)
         this.view = { x: 0, y: 0, k: 1 }
         this.userMoved = false
@@ -296,13 +291,21 @@ export class GraphView {
         const immediate = edge.transition?.mode === "immediate"
         const cls = ["edge", `edge-${edge.kind}`, immediate ? "edge-immediate" : ""].join(" ")
         const group = svg("g", { class: cls, "data-id": edge.id }, edgeLayer)
-        const marker = edge.kind === "requires" || edge.kind === "ensures" ? "arrow-fallback" : "arrow"
-        const path = svg("path", { d, class: "edge-line", "marker-end": `url(#orch-${marker})` }, group)
+        const path = svg("path", { d, class: "edge-line" }, group)
         const hit = svg("path", { d, class: "edge-hit" }, group)
-        if (edge.kind === "transition") {
-            // the line stops a few pixels inside the arrowhead, where the head is wider than the line, so none of it shows past the tip
-            const length = path.getTotalLength()
-            path.style.strokeDasharray = `${Math.max(0, length - 4)} ${length}`
+        // The arrowhead is its own triangle: its tip on the curve's end, its base 10px back along the curve, and the
+        // line stopping at the middle of that base, so the line always meets the head square-on.
+        const length = path.getTotalLength()
+        if (length > 12) {
+            const tip = path.getPointAtLength(length)
+            const base = path.getPointAtLength(length - 10)
+            const ux = (tip.x - base.x) / (Math.hypot(tip.x - base.x, tip.y - base.y) || 1)
+            const uy = (tip.y - base.y) / (Math.hypot(tip.x - base.x, tip.y - base.y) || 1)
+            const corners = [[tip.x, tip.y], [tip.x - ux * 10 - uy * 5, tip.y - uy * 10 + ux * 5], [tip.x - ux * 10 + uy * 5, tip.y - uy * 10 - ux * 5]]
+            svg("polygon", { points: corners.map((corner) => corner.map((value) => value.toFixed(1)).join(",")).join(" "), class: "arrow-head" }, group)
+            if (!["initial", "requires", "ensures"].includes(edge.kind)) {
+                path.style.strokeDasharray = `${length - 10} ${length}`
+            }
         }
         const label = edgeLabel(edge)
         let labelGroup = null
