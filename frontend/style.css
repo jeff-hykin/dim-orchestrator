@@ -349,16 +349,17 @@ svg.graph:active {
     filter: drop-shadow(0 0 6px var(--primary));
 }
 
+/* an active container lights up in its own color: a solid border and a stronger wash of its hue */
 .node.active > .compound-box {
-    stroke: var(--primary);
+    stroke: var(--hue, var(--primary));
     stroke-width: 1.8;
-    fill: var(--primary-soft, var(--sel));
-    fill-opacity: 0.22;
+    fill: var(--hue, var(--primary));
+    fill-opacity: 0.1;
 }
 
 .node.active > .compound-head {
-    fill: var(--primary);
-    fill-opacity: 0.16;
+    fill: var(--hue, var(--primary));
+    fill-opacity: 0.22;
 }
 
 .node-final.active .final-ring {
