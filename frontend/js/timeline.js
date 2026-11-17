@@ -129,7 +129,7 @@ export class Timeline {
         const context = this.canvas.getContext("2d")
         context.scale(ratio, ratio)
         const style = getComputedStyle(this.track)
-        const color = (name) => style.getPropertyValue(name).trim() || "#888"
+        const color = (name) => style.getPropertyValue(name).trim() || style.color
         const [start, end] = this.range()
         const x = (time) => ((time - start) / (end - start)) * box.width
         context.fillStyle = color("--border")
