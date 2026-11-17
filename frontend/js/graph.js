@@ -262,14 +262,16 @@ export class GraphView {
         let labelFraction = 0.5
         let labelShift
         if (edge.kind === "initial") {
-            // where a container starts: an arrow from its top-left corner to the entry node
+            // where a container starts: an arrow from just below the middle of its title to the entry node
             const box = this.layout.rects.get(edge.node)
             if (!box || !to) {
                 return
             }
-            const corner = { x: box.x + 6, y: box.y + HEADER + 6 }
-            const end = boundaryPoint(to, corner, 3)
-            d = `M${corner.x},${corner.y} L${end.x.toFixed(1)},${end.y.toFixed(1)}`
+            const context = (this.canvas ??= document.createElement("canvas")).getContext("2d")
+            context.font = `600 13px ${getComputedStyle(this.container).getPropertyValue("--sans") || "sans-serif"}`
+            const start = { x: box.x + 14 + context.measureText(edge.node).width / 2, y: box.y + HEADER + 2 }
+            const end = boundaryPoint(to, start, 3)
+            d = `M${start.x},${start.y} L${end.x.toFixed(1)},${end.y.toFixed(1)}`
         } else if (this.layout.paths) {
             const drawn = this.layout.paths.get(edge.id)
             if (!drawn?.d) {
