@@ -228,8 +228,9 @@ svg.graph:active {
 }
 
 .compound-box {
-    fill: var(--surface);
-    fill-opacity: 0.55;
+    /* a faint wash of the text color, so each level of nesting reads a little lighter than the one around it */
+    fill: var(--fg);
+    fill-opacity: 0.045;
     stroke: var(--border);
     stroke-width: 1.2;
 }

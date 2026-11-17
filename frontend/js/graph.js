@@ -1,7 +1,7 @@
 // The state machine drawn as SVG: nested nodes, transitions and fallbacks as edges, the active nodes lit, and every
 // transition the engine takes played along its edge.
 
-import { boundaryPoint, HEADER, layoutGraph, smoothPath } from "./layout.js"
+import { edgeSegments, HEADER, layoutGraph, segmentsPath } from "./layout.js"
 
 const SVG = "http://www.w3.org/2000/svg"
 const svg = (tag, attrs = {}, parent) => {
@@ -217,34 +217,7 @@ export class GraphView {
         if (!from || !to) {
             return
         }
-        let d
-        let points
-        if (edge.from === edge.to) {
-            const x = from.x + from.w - 18
-            const y = from.y
-            d = `M${x},${y} C${x + 10},${y - 34} ${x + 44},${y - 10} ${from.x + from.w},${y + 14}`
-        } else {
-            let bends = this.layout.routes.get(edge.id) ?? []
-            const twins = this.model.edges.filter((other) => (other.from === edge.from && other.to === edge.to) || (other.from === edge.to && other.to === edge.from))
-            if (twins.length > 1 && bends.length === 0) {
-                const a = { x: from.x + from.w / 2, y: from.y + from.h / 2 }
-                const b = { x: to.x + to.w / 2, y: to.y + to.h / 2 }
-                const length = Math.hypot(b.x - a.x, b.y - a.y) || 1
-                const k = twins.indexOf(edge) - (twins.length - 1) / 2
-                const sign = edge.from < edge.to ? 1 : -1
-                // Spread twins so their labels sit side by side: by label width across a vertical edge, by label height along a horizontal one.
-                const across = Math.abs(b.y - a.y) > Math.abs(b.x - a.x)
-                const step = across ? Math.max(...twins.map((t) => this.labelWidth(t))) + 8 : 26
-                const offset = k * step * sign
-                bends = [{ x: (a.x + b.x) / 2 - ((b.y - a.y) / length) * offset, y: (a.y + b.y) / 2 + ((b.x - a.x) / length) * offset }]
-            }
-            const toCentre = { x: to.x + to.w / 2, y: to.y + to.h / 2 }
-            const fromCentre = { x: from.x + from.w / 2, y: from.y + from.h / 2 }
-            const start = boundaryPoint(from, bends[0] ?? toCentre, 1)
-            const end = boundaryPoint(to, bends.at(-1) ?? fromCentre, 3)
-            points = [start, ...bends, end]
-            d = smoothPath(points)
-        }
+        const d = segmentsPath(edgeSegments(this.model, edge, from, to, this.layout.routes.get(edge.id) ?? [], this.labelWidth))
         const immediate = edge.transition?.mode === "immediate"
         const cls = ["edge", `edge-${edge.kind}`, immediate ? "edge-immediate" : ""].join(" ")
         const group = svg("g", { class: cls, "data-id": edge.id }, edgeLayer)

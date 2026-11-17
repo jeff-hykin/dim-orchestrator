@@ -32,6 +32,17 @@ function layoutWith(model, measure, labelWidth, aspect, innerAspect) {
         }
         return null
     }
+    // Where `id` and everything inside it sit, with `id`'s corner at (x, y), from the inner layouts done so far.
+    const nestedRects = (id, x, y, into) => {
+        const inner = local.get(id)
+        const own = inner ?? measure(model.nodes.get(id))
+        into.set(id, { x, y, w: own.w, h: own.h })
+        for (const [child, centre] of inner?.place ?? []) {
+            const childSize = local.get(child) ?? measure(model.nodes.get(child))
+            nestedRects(child, x + centre.x - childSize.w / 2, y + centre.y - childSize.h / 2, into)
+        }
+        return into
+    }
     const size = (id) => {
         const node = model.nodes.get(id)
         if (node.kind !== "compound" && node.kind !== "parallel") {
@@ -57,14 +68,31 @@ function layoutWith(model, measure, labelWidth, aspect, innerAspect) {
             positions: new Map([...downRaw.positions].map(([key, point]) => [key, flip(point)])),
             routes: new Map([...downRaw.routes].map(([key, points]) => [key, points.map(flip)])),
         }
+        // Everything drawn inside: the children, and every edge this node holds (its curve and its label).
         const bounds = (placement) => {
             let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+            const grow = (rect) => {
+                x0 = Math.min(x0, rect.x)
+                x1 = Math.max(x1, rect.x + rect.w)
+                y0 = Math.min(y0, rect.y)
+                y1 = Math.max(y1, rect.y + rect.h)
+            }
+            const rects = new Map()
             for (const box of boxes) {
                 const at = placement.positions.get(box.id)
-                x0 = Math.min(x0, at.x - box.w / 2)
-                x1 = Math.max(x1, at.x + box.w / 2)
-                y0 = Math.min(y0, at.y - box.h / 2)
-                y1 = Math.max(y1, at.y + box.h / 2)
+                nestedRects(box.id, at.x - box.w / 2, at.y - box.h / 2, rects)
+                grow(rects.get(box.id))
+            }
+            const held = (edge) => (edge.from === edge.to ? model.nodes.get(edge.from)?.parent === id : linkEdges.includes(edge.id))
+            for (const edge of model.edges.filter(held)) {
+                const from = rects.get(edge.from)
+                const to = rects.get(edge.to)
+                if (!from || !to) {
+                    continue
+                }
+                const { points, mid } = sampleSegments(edgeSegments(model, edge, from, to, placement.routes.get(linkEdges.indexOf(edge.id)) ?? [], labelWidth))
+                points.forEach((point) => grow({ ...point, w: 0, h: 0 }))
+                grow(labelBox(mid, labelWidth(edge)))
             }
             return boxes.length ? { x0, y0, x1, y1 } : { x0: 0, y0: 0, x1: 0, y1: 0 }
         }
@@ -125,20 +153,77 @@ export function boundaryPoint(rect, toward, inset = 0) {
     return { x: cx + dx * scale, y: cy + dy * scale }
 }
 
-/** A smooth SVG path through points (Catmull-Rom as cubic Béziers). */
-export function smoothPath(points) {
-    if (points.length < 2) {
-        return ""
+/**
+ * An edge's curve as cubic Bézier segments `[p0, c1, c2, p3]`: a loop off the top-right corner for a self-transition,
+ * else a smooth curve through the layout's bends (twins without bends bowed apart so their labels sit side by side).
+ */
+export function edgeSegments(model, edge, from, to, bends, labelWidth) {
+    if (edge.from === edge.to) {
+        const x = from.x + from.w - 18
+        const y = from.y
+        return [[{ x, y }, { x: x + 10, y: y - 34 }, { x: x + 44, y: y - 10 }, { x: from.x + from.w, y: y + 14 }]]
     }
-    let path = `M${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`
+    const fromCentre = { x: from.x + from.w / 2, y: from.y + from.h / 2 }
+    const toCentre = { x: to.x + to.w / 2, y: to.y + to.h / 2 }
+    const twins = model.edges.filter((other) => (other.from === edge.from && other.to === edge.to) || (other.from === edge.to && other.to === edge.from))
+    if (twins.length > 1 && bends.length === 0) {
+        const length = Math.hypot(toCentre.x - fromCentre.x, toCentre.y - fromCentre.y) || 1
+        const k = twins.indexOf(edge) - (twins.length - 1) / 2
+        const sign = edge.from < edge.to ? 1 : -1
+        // Spread twins so their labels sit side by side: by label width across a vertical edge, by label height along a horizontal one.
+        const across = Math.abs(toCentre.y - fromCentre.y) > Math.abs(toCentre.x - fromCentre.x)
+        const step = across ? Math.max(...twins.map((twin) => labelWidth(twin))) + 8 : 26
+        const offset = k * step * sign
+        // bow out from the middle of the gap between the two boxes (the centres' midpoint can sit inside a big compound)
+        const a = boundaryPoint(from, toCentre)
+        const b = boundaryPoint(to, fromCentre)
+        bends = [{ x: (a.x + b.x) / 2 - ((toCentre.y - fromCentre.y) / length) * offset, y: (a.y + b.y) / 2 + ((toCentre.x - fromCentre.x) / length) * offset }]
+    }
+    const start = boundaryPoint(from, bends[0] ?? toCentre, 1)
+    const end = boundaryPoint(to, bends.at(-1) ?? fromCentre, 3)
+    return smoothSegments([start, ...bends, end])
+}
+
+/** A smooth curve through points (Catmull-Rom as cubic Béziers). */
+function smoothSegments(points) {
+    const segments = []
     for (let i = 0; i < points.length - 1; i++) {
         const p0 = points[i - 1] ?? points[i]
         const p1 = points[i]
         const p2 = points[i + 1]
         const p3 = points[i + 2] ?? p2
-        const c1 = { x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6 }
-        const c2 = { x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6 }
-        path += ` C${c1.x.toFixed(1)},${c1.y.toFixed(1)} ${c2.x.toFixed(1)},${c2.y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`
+        segments.push([p1, { x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6 }, { x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6 }, p2])
     }
-    return path
+    return segments
 }
+
+/** The SVG path of `edgeSegments`. */
+export function segmentsPath(segments) {
+    const f = (point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`
+    return segments.length ? `M${f(segments[0][0])}` + segments.map(([, c1, c2, p]) => ` C${f(c1)} ${f(c2)} ${f(p)}`).join("") : ""
+}
+
+/** Points along the curve, and the one halfway along it (where the label sits). */
+export function sampleSegments(segments, perSegment = 16) {
+    const points = []
+    for (const [a, b, c, d] of segments) {
+        for (let i = points.length ? 1 : 0; i <= perSegment; i++) {
+            const t = i / perSegment
+            const u = 1 - t
+            points.push({
+                x: u * u * u * a.x + 3 * u * u * t * b.x + 3 * u * t * t * c.x + t * t * t * d.x,
+                y: u * u * u * a.y + 3 * u * u * t * b.y + 3 * u * t * t * c.y + t * t * t * d.y,
+            })
+        }
+    }
+    const lengths = [0]
+    for (let i = 1; i < points.length; i++) {
+        lengths.push(lengths[i - 1] + Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y))
+    }
+    const half = lengths.at(-1) / 2
+    const mid = points[Math.max(0, lengths.findIndex((length) => length >= half))] ?? points[0]
+    return { points, mid }
+}
+
+/** An edge label's box around the point it is centred on (the label's text plus its padding, 18 high). */
+export const labelBox = (mid, width) => ({ x: mid.x - width / 2, y: mid.y - 9, w: width, h: 18 })
