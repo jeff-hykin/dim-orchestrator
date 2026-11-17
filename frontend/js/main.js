@@ -62,7 +62,12 @@ if (parent !== window) {
 const tooltip = $("#tooltip")
 
 function showTip(content, event, pinned = false) {
+    // a pinned tip refreshed by a live update (no pointer event) keeps its place: only its contents change
+    const refresh = !event && pinned && !tooltip.hidden && tooltip.classList.contains("pinned")
     $("#tooltip-content").replaceChildren(content)
+    if (refresh) {
+        return
+    }
     tooltip.hidden = false
     tooltip.classList.toggle("pinned", pinned)
     const narrow = innerWidth < 700
