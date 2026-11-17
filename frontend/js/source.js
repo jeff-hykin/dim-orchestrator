@@ -1,21 +1,43 @@
-// The orchestrator's TOML file over the graph: highlighted, and editable in place (a textarea over the highlighted
-// copy, so the colors follow the typing). Apply sends it to the orchestrator, which checks it before using it.
+// The orchestrator's file over the graph, as its TOML or converted to YAML: highlighted, and editable in place (a
+// textarea over the highlighted copy, so the colors follow the typing). Apply sends TOML to the orchestrator, which
+// checks it before using it; a YAML edit is converted back to TOML first.
 
 import { h } from "./details.js"
+import { isScalar, parseToml, parseYaml, stringifyToml, visitYaml, YamlDocument } from "../vendor/formats/formats.js"
 
-/** TOML as colored spans: comments, [tables], keys, strings (CEL inside them stays a string), numbers, booleans. */
-export function highlightToml(source) {
+/** TOML text as YAML, lists of plain values kept on one line. */
+export function tomlToYaml(source) {
+    const document = new YamlDocument(parseToml(source))
+    visitYaml(document, {
+        Seq(_, node) {
+            if (node.items.every(isScalar)) {
+                node.flow = true
+            }
+        },
+    })
+    return document.toString({ lineWidth: 0 })
+}
+
+/** YAML as colored spans: comments, keys, strings, numbers, booleans and null. */
+export function highlightYaml(source) {
+    return paintTokens(source, /((?:^|(?<=[ \t]))#[^\n]*)|("(?:[^"\\\n]|\\.)*"?|'(?:[^'\n]|'')*'?)|((?<=^[ \t]*(?:-[ \t]+)?)[^\s#:'"\[\]{},-][^:#\n]*?(?=:(?:[ \t]|$)))|\b(true|false|null)\b|((?<=[:\[,-][ \t]*)-?\d[\d_]*(?:\.\d+)?(?:[eE][+-]?\d+)?(?=[ \t]*(?:$|[,\]#])))/gm, ["t-com", "t-str", "t-key", "t-bool", "t-num"])
+}
+
+function paintTokens(source, token, kinds) {
     const out = []
-    const token = /(#[^\n]*)|("""[\s\S]*?(?:"""|$)|'''[\s\S]*?(?:'''|$)|"(?:[^"\\\n]|\\.)*"?|'[^'\n]*'?)|(^[ \t]*\[\[?[^\]\n]*\]\]?)|(^[ \t]*[A-Za-z0-9_.-]+(?=[ \t]*=))|\b(true|false)\b|(-?\b\d[\d_]*(?:\.\d+)?(?:[eE][+-]?\d+)?\b)/gm
     let at = 0
     for (const match of source.matchAll(token)) {
         out.push(source.slice(at, match.index))
-        const kind = ["", "t-com", "t-str", "t-table", "t-key", "t-bool", "t-num"][match.slice(1).findIndex((group) => group != null) + 1]
-        out.push(h("span", { class: kind }, match[0]))
+        out.push(h("span", { class: kinds[match.slice(1).findIndex((group) => group != null)] }, match[0]))
         at = match.index + match[0].length
     }
     out.push(source.slice(at))
     return out
+}
+
+/** TOML as colored spans: comments, [tables], keys, strings (CEL inside them stays a string), numbers, booleans. */
+export function highlightToml(source) {
+    return paintTokens(source, /(#[^\n]*)|("""[\s\S]*?(?:"""|$)|'''[\s\S]*?(?:'''|$)|"(?:[^"\\\n]|\\.)*"?|'[^'\n]*'?)|(^[ \t]*\[\[?[^\]\n]*\]\]?)|(^[ \t]*[A-Za-z0-9_.-]+(?=[ \t]*=))|\b(true|false)\b|(-?\b\d[\d_]*(?:\.\d+)?(?:[eE][+-]?\d+)?\b)/gm, ["t-com", "t-str", "t-table", "t-key", "t-bool", "t-num"])
 }
 
 export class SourceView {
@@ -26,6 +48,7 @@ export class SourceView {
     constructor(container, handlers) {
         this.handlers = handlers
         this.source = ""
+        this.format = "toml"
         this.editable = false
         this.code = h("pre", { class: "src-code", "aria-hidden": "true" })
         this.input = h("textarea", { class: "src-input", spellcheck: "false", "aria-label": "orchestrator file", readonly: "" })
@@ -49,10 +72,11 @@ export class SourceView {
         this.applyButton = h("button", { class: "btn btn-primary", type: "button", hidden: "", onclick: () => this.apply() }, "Apply")
         this.cancelButton = h("button", { class: "btn", type: "button", hidden: "", onclick: () => this.cancel() }, "Cancel")
         this.problems = h("div", { class: "src-problems", hidden: "" })
+        this.note = h("span", { class: "src-note", hidden: "" }, "saves as TOML: comments below the file's header are not kept")
         this.element = h(
             "section",
             { class: "source", hidden: "" },
-            h("div", { class: "src-bar" }, this.path, h("span", { class: "spacer" }), this.cancelButton, this.applyButton, this.editButton),
+            h("div", { class: "src-bar" }, this.path, h("span", { class: "spacer" }), this.note, this.cancelButton, this.applyButton, this.editButton),
             h("div", { class: "src-editor" }, this.code, this.input),
             this.problems,
         )
@@ -63,8 +87,32 @@ export class SourceView {
         return !this.element.hidden
     }
 
-    show(open) {
-        this.element.hidden = !open
+    /** Open in `format` ("toml" or "yaml"), or close with `null`. An edit under way keeps its format. */
+    show(format) {
+        this.element.hidden = format == null
+        if (format && format !== this.format && !this.editing) {
+            this.format = format
+            this.element.dataset.format = format
+            this.input.setAttribute("aria-label", `orchestrator file as ${format.toUpperCase()}`)
+            this.reset()
+        }
+    }
+
+    /** The file in the format shown. */
+    text() {
+        if (this.format === "toml") {
+            return this.source
+        }
+        try {
+            return tomlToYaml(this.source)
+        } catch (error) {
+            return `# could not convert the file: ${error.message}\n`
+        }
+    }
+
+    reset() {
+        this.input.value = this.text()
+        this.paint(this.input.value)
     }
 
     /** Editing needs an orchestrator to send the file to. */
@@ -82,13 +130,12 @@ export class SourceView {
             return
         }
         this.source = source ?? ""
-        this.input.value = this.source
-        this.paint(this.source)
+        this.reset()
     }
 
     paint(text) {
         // a trailing newline keeps the last line's height when the text ends in one
-        this.code.replaceChildren(...highlightToml(text), "\n")
+        this.code.replaceChildren(...(this.format === "yaml" ? highlightYaml(text) : highlightToml(text)), "\n")
     }
 
     edit() {
@@ -99,6 +146,7 @@ export class SourceView {
         this.element.classList.add("editing")
         this.input.removeAttribute("readonly")
         this.editButton.hidden = true
+        this.note.hidden = this.format !== "yaml"
         this.applyButton.hidden = false
         this.cancelButton.hidden = false
         this.input.focus()
@@ -106,8 +154,7 @@ export class SourceView {
 
     cancel() {
         this.finish()
-        this.input.value = this.source
-        this.paint(this.source)
+        this.reset()
     }
 
     finish() {
@@ -117,6 +164,7 @@ export class SourceView {
         this.editButton.hidden = false
         this.applyButton.hidden = true
         this.cancelButton.hidden = true
+        this.note.hidden = true
         this.problems.hidden = true
     }
 
@@ -124,22 +172,36 @@ export class SourceView {
         if (!this.editing) {
             return
         }
-        const text = this.input.value
+        let text = this.input.value
+        if (this.format === "yaml") {
+            try {
+                // the file's opening comment block is carried over; comments further down are lost with the conversion
+                const header = this.source.match(/^(?:[ \t]*(?:#[^\n]*)?\n)*/)[0]
+                text = header + stringifyToml(parseYaml(text))
+            } catch (error) {
+                this.showProblems("Not applied: not valid YAML", [error.message])
+                return
+            }
+        }
         this.applyButton.disabled = true
         try {
             const problems = await this.handlers.onApply(text)
             if (problems.length) {
-                this.problems.replaceChildren(h("div", { class: "src-problems-title" }, "Not applied: the orchestrator found"), ...problems.map((problem) => h("div", { class: "src-problem" }, problem)))
-                this.problems.hidden = false
+                this.showProblems("Not applied: the orchestrator found", problems)
                 return
             }
             this.source = text
             this.finish()
+            this.reset()
         } catch (error) {
-            this.problems.replaceChildren(h("div", { class: "src-problems-title" }, "Not applied"), h("div", { class: "src-problem" }, error.message))
-            this.problems.hidden = false
+            this.showProblems("Not applied", [error.message])
         } finally {
             this.applyButton.disabled = false
         }
+    }
+
+    showProblems(title, problems) {
+        this.problems.replaceChildren(h("div", { class: "src-problems-title" }, title), ...problems.map((problem) => h("div", { class: "src-problem" }, problem)))
+        this.problems.hidden = false
     }
 }

@@ -214,10 +214,14 @@ const source = new SourceView($("#graph"), {
         return problems
     },
 })
-$("#toggle-source").addEventListener("click", () => {
-    source.show(!source.open)
-    $("#toggle-source").setAttribute("aria-pressed", String(source.open))
-})
+for (const format of ["toml", "yaml"]) {
+    $(`#show-${format}`).addEventListener("click", () => {
+        source.show(source.open && source.format === format ? null : format)
+        for (const other of ["toml", "yaml"]) {
+            $(`#show-${other}`).setAttribute("aria-pressed", String(source.open && source.format === other))
+        }
+    })
+}
 $("#fit").addEventListener("click", () => {
     graph.userMoved = false
     graph.fit()

@@ -1466,6 +1466,11 @@ span.bb-link {
     color: var(--muted-fg);
 }
 
+.src-note {
+    font-size: 11px;
+    color: var(--warn);
+}
+
 .btn-primary {
     background: var(--primary);
     color: var(--primary-fg);
