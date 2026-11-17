@@ -13,6 +13,9 @@ const svg = (tag, attrs = {}, parent) => {
     return element
 }
 
+// a dot is a rect whose corners follow the theme's --radius-round (square on a sharp skin)
+const dot = (cx, cy, r, className, parent) => svg("rect", { x: cx - r, y: cy - r, width: 2 * r, height: 2 * r, rx: r, class: `dot ${className}` }, parent)
+
 const short = (text, length = 26) => (text.length > length ? `${text.slice(0, length - 1)}…` : text)
 
 /** The words an edge's label carries. */
@@ -153,15 +156,15 @@ export class GraphView {
     drawNode(layer, node, rect) {
         const group = svg("g", { class: `node node-${node.kind}`, "data-id": node.id }, layer)
         if (node.kind === "start") {
-            svg("circle", { cx: rect.x + 7, cy: rect.y + 7, r: 6, class: "start-dot" }, group)
+            dot(rect.x + 7, rect.y + 7, 6, "start-dot", group)
         } else if (node.kind === "final") {
             const cx = rect.x + rect.w / 2
-            svg("circle", { cx, cy: rect.y + 13, r: 11, class: `final-ring final-${node.outcome}` }, group)
-            svg("circle", { cx, cy: rect.y + 13, r: 6, class: `final-core final-${node.outcome}` }, group)
+            dot(cx, rect.y + 13, 11, `final-ring final-${node.outcome}`, group)
+            dot(cx, rect.y + 13, 6, `final-core final-${node.outcome}`, group)
             svg("text", { x: cx, y: rect.y + 37, class: "final-label", "text-anchor": "middle" }, group).textContent = node.outcome
         } else if (node.kind === "compound" || node.kind === "parallel") {
-            svg("rect", { x: rect.x, y: rect.y, width: rect.w, height: rect.h, rx: 12, class: "box compound-box" }, group)
-            svg("rect", { x: rect.x, y: rect.y, width: rect.w, height: HEADER, rx: 12, class: "compound-head" }, group)
+            svg("rect", { x: rect.x, y: rect.y, width: rect.w, height: rect.h, class: "box compound-box" }, group)
+            svg("rect", { x: rect.x, y: rect.y, width: rect.w, height: HEADER, class: "compound-head" }, group)
             svg("text", { x: rect.x + 14, y: rect.y + 20, class: "node-name" }, group).textContent = node.id
             if (node.kind === "parallel") {
                 const tag = svg("g", { class: "parallel-tag" }, group)
@@ -181,7 +184,7 @@ export class GraphView {
                 }
             }
         } else {
-            svg("rect", { x: rect.x, y: rect.y, width: rect.w, height: rect.h, rx: 9, class: "box leaf-box" }, group)
+            svg("rect", { x: rect.x, y: rect.y, width: rect.w, height: rect.h, class: "box leaf-box" }, group)
             svg("text", { x: rect.x + 14, y: rect.y + 20, class: "node-name" }, group).textContent = node.id
             let y = rect.y + 20
             const sub = this.subtitle(node)
@@ -194,7 +197,7 @@ export class GraphView {
                 y += 16
                 svg("text", { x: rect.x + 14, y, class: "node-chips" }, group).textContent = chips.join("  ")
             }
-            svg("circle", { cx: rect.x + rect.w - 11, cy: rect.y + 11, r: 4, class: "run-dot" }, group)
+            dot(rect.x + rect.w - 11, rect.y + 11, 4, "run-dot", group)
             svg("text", { x: rect.x + rect.w - 22, y: rect.y + 15, "text-anchor": "end", class: "outcome-mark" }, group)
         }
         const timer = svg("text", { x: rect.x + rect.w - 8, y: rect.y + rect.h + 13, "text-anchor": "end", class: "timer-text" }, group)
@@ -254,7 +257,7 @@ export class GraphView {
             const length = path.getTotalLength()
             const mid = path.getPointAtLength(length / 2)
             labelGroup = svg("g", { class: `edge-label edge-label-${edge.kind}${immediate ? " edge-label-immediate" : ""}`, "data-id": edge.id }, labelLayer)
-            const background = svg("rect", { rx: 9, class: "edge-label-bg" }, labelGroup)
+            const background = svg("rect", { class: "edge-label-bg" }, labelGroup)
             const text = svg("text", { x: mid.x, y: mid.y + 4, "text-anchor": "middle" }, labelGroup)
             text.textContent = (immediate ? "⚡ " : "") + label + (Object.keys(edge.transition?.set ?? {}).length ? " ✎" : "")
             const w = text.getComputedTextLength() || text.textContent.length * 6.4
@@ -359,7 +362,7 @@ export class GraphView {
             void element.getBoundingClientRect()
             element.classList.add("fired")
         }
-        const dot = svg("circle", { r: 5, class: "spark" }, edge.group)
+        const spark = dot(0, 0, 5, "spark", edge.group)
         const length = edge.path.getTotalLength()
         const started = performance.now()
         const duration = 650
@@ -367,12 +370,12 @@ export class GraphView {
             const t = Math.min(1, (now - started) / duration)
             const eased = 1 - (1 - t) ** 3
             const point = edge.path.getPointAtLength(length * eased)
-            dot.setAttribute("cx", point.x)
-            dot.setAttribute("cy", point.y)
+            spark.setAttribute("x", point.x - 5)
+            spark.setAttribute("y", point.y - 5)
             if (t < 1) {
                 requestAnimationFrame(step)
             } else {
-                dot.remove()
+                spark.remove()
             }
         }
         requestAnimationFrame(step)

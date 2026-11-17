@@ -41,6 +41,8 @@ function applyTheme() {
     } catch {
         // no storage (outside Desktop): theme.css's :root stays
     }
+    const round = getComputedStyle(document.documentElement).getPropertyValue("--radius-round").trim()
+    document.documentElement.dataset.dots = /^0(px)?$/.test(round) ? "square" : "round"
 }
 applyTheme()
 addEventListener("storage", applyTheme)

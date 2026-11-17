@@ -227,6 +227,15 @@ svg.graph:active {
 }
 
 /* ---------------------------------------------------------------- graph */
+.compound-box,
+.compound-head {
+    rx: var(--radius-lg);
+}
+
+:root[data-dots="square"] .dot {
+    rx: 0;
+}
+
 .compound-box {
     fill: var(--surface);
     fill-opacity: 0.55;
@@ -256,6 +265,7 @@ svg.graph:active {
 }
 
 .leaf-box {
+    rx: var(--radius);
     fill: var(--card, var(--surface));
     stroke: var(--border-strong);
     stroke-width: 1.2;
@@ -485,6 +495,7 @@ svg.graph:active {
 }
 
 .edge-label-bg {
+    rx: var(--radius-pill);
     fill: var(--raised);
     stroke: var(--border);
 }
@@ -516,19 +527,8 @@ svg.graph:active {
 @keyframes label-fired {
     0%,
     30% {
-        fill: var(--primary);
         stroke: var(--primary);
-    }
-}
-
-.edge-label.fired text {
-    animation: label-text-fired 1.6s ease-out;
-}
-
-@keyframes label-text-fired {
-    0%,
-    30% {
-        fill: var(--primary-fg);
+        stroke-width: 2.5;
     }
 }
 
@@ -1174,7 +1174,7 @@ span.bb-link {
     width: 2px;
     margin-left: -1px;
     background: var(--warn);
-    border-radius: 1px;
+    border-radius: var(--radius-sm);
     box-shadow: 0 0 6px var(--warn);
 }
 
