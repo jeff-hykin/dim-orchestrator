@@ -288,7 +288,10 @@ export class GraphView {
             dot(rect.x + rect.w - 11, rect.y + 11, 4, "run-dot", group)
             svg("text", { x: rect.x + rect.w - 22, y: rect.y + 15, "text-anchor": "end", class: "outcome-mark" }, group)
         }
+        // a countdown under the node, on its own small backing so it reads over lines and container fills
+        const timerBg = svg("rect", { class: "timer-bg", visibility: "hidden" }, group)
         const timer = svg("text", { x: rect.x + rect.w - 8, y: rect.y + rect.h + 13, "text-anchor": "end", class: "timer-text" }, group)
+        timer.background = timerBg
         this.timerEls.set(node.id, timer)
         group.addEventListener("pointerenter", (event) => this.handlers.onHover({ type: "node", id: node.id }, event))
         group.addEventListener("pointerleave", () => this.handlers.onLeave())
@@ -519,7 +522,18 @@ export class GraphView {
         const at = now ?? this.timerClock?.time ?? Date.now() / 1000
         for (const [id, element] of this.timerEls) {
             const when = due.get(id)
-            element.textContent = when == null ? "" : `⏱ ${Math.max(0, when - at).toFixed(1)}s`
+            const text = when == null ? "" : `⏱ ${Math.max(0, when - at).toFixed(1)}s`
+            if (element.textContent === text) {
+                continue
+            }
+            element.textContent = text
+            element.background.setAttribute("visibility", text ? "visible" : "hidden")
+            if (text) {
+                const box = element.getBBox()
+                for (const [key, value] of Object.entries({ x: box.x - 4, y: box.y - 1, width: box.width + 8, height: box.height + 2 })) {
+                    element.background.setAttribute(key, value)
+                }
+            }
         }
     }
 

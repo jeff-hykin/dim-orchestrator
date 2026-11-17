@@ -335,6 +335,13 @@ svg.graph:active {
     fill: var(--warn);
 }
 
+.timer-bg {
+    rx: var(--radius-sm);
+    fill: var(--surface);
+    fill-opacity: 0.92;
+    stroke: color-mix(in srgb, var(--warn) 45%, transparent);
+}
+
 .timer-text {
     fill: var(--warn);
     font-size: 10.5px;
