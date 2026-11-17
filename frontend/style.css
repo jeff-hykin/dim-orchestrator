@@ -467,7 +467,7 @@ svg.graph:active {
 }
 
 .edge.fired .arrow-head {
-    animation: fired-head 1.6s ease-out;
+    animation: fired-head 0.9s ease-out;
 }
 
 @keyframes fired-head {
@@ -485,7 +485,7 @@ svg.graph:active {
 }
 
 .edge.fired .edge-line {
-    animation: fired 1.6s ease-out;
+    animation: fired 0.9s ease-out;
 }
 
 .spark {
@@ -514,7 +514,8 @@ svg.graph:active {
 .edge-label-bg,
 .edge-label-tip {
     fill: var(--raised);
-    stroke: var(--border);
+    stroke: var(--border-strong);
+    stroke-dasharray: 3 2;
 }
 
 .edge-label text {
@@ -536,7 +537,7 @@ svg.graph:active {
 
 .edge-label.fired .edge-label-bg,
 .edge-label.fired .edge-label-tip {
-    animation: label-fired 1.6s ease-out;
+    animation: label-fired 0.9s ease-out;
 }
 
 .edge-label.picked .edge-label-bg,

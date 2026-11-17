@@ -304,6 +304,7 @@ function render(mode) {
         }
     } else {
         panel.show(step, false, app.modules, recent)
+        graph.clearFires()
     }
     graph.show(step, { fired, entered })
     app.shownSeq = step.seq
@@ -413,10 +414,12 @@ async function follow(moduleId, generation) {
     setStatus("connected")
     let entries = first.entries
     let more = entries.length > 0
+    // the steps from before we connected (a reload, a reconnect) are history: show where they ended, don't play them
+    let caughtUp = false
     while (generation === app.generation) {
         const added = history.add(entries)
         if (added.length && timeline.index == null) {
-            render("live")
+            render(caughtUp ? "live" : "jump")
         } else if (added.length) {
             timeline.draw()
         }
@@ -427,6 +430,7 @@ async function follow(moduleId, generation) {
         if (page.seq < history.seq) {
             throw new Error("the orchestrator restarted")
         }
+        caughtUp ||= !more
         entries = page.entries
         more = page.entries.length > 0 && page.entries.at(-1).seq < page.seq
     }

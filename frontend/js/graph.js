@@ -70,6 +70,10 @@ function labelTip(box, anchor) {
     return `M${f(x - half, edgeY)} L${f(x, above ? box.y - reach : box.y + box.h + reach)} L${f(x + half, edgeY)}`
 }
 
+// how long one transition's animation takes, and how many may wait their turn before the rest are played at once
+const FIRE_MS = 900
+const FIRE_BACKLOG = 8
+
 const short = (text, length = 26) => (text.length > length ? `${text.slice(0, length - 1)}…` : text)
 
 /** The words an edge's label carries. */
@@ -470,10 +474,43 @@ export class GraphView {
         }
     }
 
+    /**
+     * Play a transition along its edge. Plays one at a time, each after the last has finished, so a burst of instant
+     * transitions still reads in order; more than FIRE_BACKLOG waiting (a fast loop) are all played at once and the
+     * queue starts over, so it can never fall behind.
+     */
     fire(edgeId) {
         if (document.hidden) {
             return
         }
+        this.fireQueue ??= []
+        this.fireQueue.push(edgeId)
+        if (this.fireQueue.length > FIRE_BACKLOG) {
+            for (const id of this.fireQueue.splice(0)) {
+                this.play(id)
+            }
+            return
+        }
+        this.pump()
+    }
+
+    /** Drop the transitions still waiting their turn (on a jump, a rewind or a hidden tab). */
+    clearFires() {
+        this.fireQueue = []
+    }
+
+    pump() {
+        if (this.firing || !this.fireQueue?.length) {
+            return
+        }
+        this.play(this.fireQueue.shift())
+        this.firing = setTimeout(() => {
+            this.firing = null
+            this.pump()
+        }, FIRE_MS)
+    }
+
+    play(edgeId) {
         const edge = this.edgeEls.get(edgeId)
         if (!edge) {
             return
@@ -486,7 +523,7 @@ export class GraphView {
         const spark = dot(0, 0, 3.5, "spark", edge.group)
         const length = edge.path.getTotalLength()
         const started = performance.now()
-        const duration = 650
+        const duration = FIRE_MS * 0.75
         const step = (now) => {
             const t = Math.min(1, (now - started) / duration)
             const eased = 1 - (1 - t) ** 3
