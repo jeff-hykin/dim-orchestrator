@@ -836,13 +836,9 @@ svg.graph.picking .edge:not(.picked) .arrow-head {
     font-size: 11.5px;
 }
 
-/* values read right-aligned, next to the edit button; an event's expression reads from the left */
+/* values read right-aligned, next to the edit button */
 .bb-preview {
     text-align: right;
-}
-
-.bb-events .bb-preview {
-    text-align: left;
 }
 
 .bb-preview .pill {
@@ -875,39 +871,6 @@ svg.graph.picking .edge:not(.picked) .arrow-head {
 
 .bb-row.expanded .bb-detail {
     display: grid;
-}
-
-/* an opened event's condition: a blue box of its own, above (and outside) the details' colored bar */
-.bb-when {
-    display: none;
-    margin: 0 0 6px 24px;
-    border: 1px solid var(--primary);
-    border-radius: var(--radius-sm);
-    overflow: hidden;
-}
-
-.bb-row.expanded .bb-when {
-    display: block;
-}
-
-.bb-when-head {
-    padding: 2px 8px;
-    font-size: 10.5px;
-    color: var(--primary);
-    background: var(--primary-soft, var(--sel));
-}
-
-.bb-when-name {
-    font-family: var(--mono);
-    font-weight: 600;
-}
-
-.bb-when-body {
-    padding: 6px 8px;
-    white-space: nowrap;
-    overflow-x: auto;
-    font-family: var(--mono);
-    font-size: 11.5px;
 }
 
 .bb-events .bb-detail {
@@ -1312,15 +1275,14 @@ span.bb-link {
 /* One color per kind of name, shared by the blackboard's sections, its pills, and names inside the graph's labels.
    --primary is left for the active state. */
 :root {
-    --kind-signals: var(--accent-alt);
+    --kind-streams: var(--accent-alt);
     --kind-vars: var(--cat-2, var(--ok));
     --kind-results: var(--cat-3, var(--info));
-    --kind-event: var(--cat-4, var(--warn));
     --kind-constants: var(--muted-fg);
 }
 
-.bb-signals {
-    --kind: var(--kind-signals);
+.bb-streams {
+    --kind: var(--kind-streams);
 }
 .bb-vars {
     --kind: var(--kind-vars);
@@ -1328,25 +1290,18 @@ span.bb-link {
 .bb-results {
     --kind: var(--kind-results);
 }
-.bb-events {
-    --kind: var(--kind-event);
-}
 .bb-constants {
     --kind: var(--kind-constants);
 }
 
-.pill-signals {
-    --kind: var(--kind-signals);
+.pill-streams {
+    --kind: var(--kind-streams);
 }
 .pill-vars {
     --kind: var(--kind-vars);
 }
 .pill-results {
     --kind: var(--kind-results);
-}
-.pill-event {
-    --kind: var(--kind-event);
-    border-style: dashed;
 }
 .pill-constants {
     --kind: var(--kind-constants);
@@ -1369,17 +1324,14 @@ span.bb-link {
 }
 
 /* names inside the graph's edge labels, in their kind's color */
-.lbl-signals {
-    fill: var(--kind-signals);
+.lbl-streams {
+    fill: var(--kind-streams);
 }
 .lbl-vars {
     fill: var(--kind-vars);
 }
 .lbl-results {
     fill: var(--kind-results);
-}
-.lbl-event {
-    fill: var(--kind-event);
 }
 .lbl-constants {
     fill: var(--fg);
@@ -1863,8 +1815,8 @@ span.bb-link {
     color: var(--danger);
 }
 
-.t-k-signals {
-    color: var(--kind-signals);
+.t-k-streams {
+    color: var(--kind-streams);
 }
 
 .t-k-vars {
@@ -1873,10 +1825,6 @@ span.bb-link {
 
 .t-k-results {
     color: var(--kind-results);
-}
-
-.t-k-event {
-    color: var(--kind-event);
 }
 
 .t-k-constants {

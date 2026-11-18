@@ -1,8 +1,8 @@
 # Orchestrator (DimOS Desktop app)
 
 Watch a dimos Orchestrator run: its nested state machine with the active nodes lit and each transition playing along
-its edge, the blackboard grouped by signals, vars, results and constants, CEL conditions with every name as a pill
-showing its value, and a timeline to rewind and replay the session. Vars and signals can be set from the blackboard.
+its edge, the blackboard grouped by stream values, vars, results and constants, CEL conditions with every name as a pill
+showing its value, and a timeline to rewind and replay the session. Vars and stream values can be set from the blackboard.
 
 Install: Desktop's App Store → Install From URL → `https://github.com/jeff-hykin/dim-orchestrator`.
 

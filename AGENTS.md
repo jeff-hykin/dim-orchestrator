@@ -38,7 +38,7 @@ The app needs a dimos with the orchestrator's state RPCs (branch `jeff/feat/orch
 orchestrator PRs). In that checkout:
 
 ```sh
-dimos --viewer none run orchestration-demo-patrol      # or delivery, inspection, shift, safety, jam
+dimos --viewer none run orchestration-demo-patrol      # or warehouse, delivery, inspection, shift, safety, jam
 DIMOS_APP='{"socket":"/tmp/dimorch-gw.sock"}' .venv/bin/python -m experimental.gateway --port 7811 --no-zenoh
 ```
 

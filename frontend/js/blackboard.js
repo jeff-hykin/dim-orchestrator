@@ -1,18 +1,17 @@
 // The blackboard as a table on the right: keys grouped by where they come from, values as colored JSON, rows that a
 // step changed flashing, and links to whatever writes each key.
 
-import { renderCel } from "./cel.js"
 import { h, namesFor, publisherOf, renderJsonLine } from "./details.js"
 import { fitLists, renderFriendly } from "./friendly.js"
 import { edgeLabel } from "./graph.js"
 import { groupOf } from "./model.js"
 
-/** The transitions whose `on`, `if` or `after` reads `key` (directly, or a field of it). */
+/** The transitions whose `if` or `after` reads `key` (directly, or a field of it). */
 function usersOf(model, key) {
     const reads = new RegExp(`(^|[^\\w.])${key.replace(/[.]/g, "\\.")}($|[^\\w])`)
     return model.edges
         .filter((edge) => edge.transition)
-        .filter(({ transition }) => transition.on === key || [transition.if, transition.after].some((source) => source != null && reads.test(String(source))))
+        .filter(({ transition }) => [transition.if, transition.after].some((source) => source != null && reads.test(String(source))))
         .map((edge) => edge.id)
 }
 
@@ -23,11 +22,10 @@ const decimals = (value) => (Number.isInteger(value) ? 0 : Math.min(4, String(+v
 const steadyNumber = (row) => h("span", { class: "j-num" }, row.value.toFixed(row.digits ?? 0))
 
 const GROUPS = [
-    ["signals", "Signals", "read from streams"],
+    ["streams", "Stream values", "a field of the latest message on a stream"],
     ["vars", "Vars", "written by transitions' `set`"],
     ["results", "Results", "what activities returned"],
     ["other", "Other", ""],
-    ["events", "Events", "named conditions, true when their `when` is"],
     ["constants", "Constants", "fixed by the file"],
 ]
 
@@ -67,9 +65,6 @@ export class BlackboardPanel {
             this.sections.set(id, { section, body, head })
             this.container.append(section)
         }
-        for (const [name, event] of model.events) {
-            this.addRow("events", name, event)
-        }
         GROUPS.forEach(([id]) => this.updateCount(id))
     }
 
@@ -86,7 +81,7 @@ export class BlackboardPanel {
     // A row is one fixed-height line (key and a one-line preview) until it is clicked. Expanded, the preview gives way
     // to a fixed-height, scrolling box: where the key comes from and which transitions use it on the left, the full
     // value on the right. Live updates never change the panel's layout.
-    addRow(group, key, event) {
+    addRow(group, key) {
         const model = this.model
         const preview = h("div", { class: "bb-preview" })
         const full = h("div", { class: "bb-full" })
@@ -108,9 +103,9 @@ export class BlackboardPanel {
                 h("span", { class: "bb-src-when" }, edgeLabel(edge)),
             )
         }
-        const signal = model.signals.get(key)
-        if (signal) {
-            list("read from", [h("code", { class: "bb-src" }, signal.stream + (signal.field ? `.${signal.field}` : ""))])
+        const streamValue = model.streamValues.get(key)
+        if (streamValue) {
+            list("read from", [h("code", { class: "bb-src" }, `${streamValue.stream}.${streamValue.field}`)])
         }
         const resultOf = model.results.get(key) ?? []
         list("result of", resultOf.map((node) => h("button", { class: "bb-src", type: "button", onclick: (click) => {
@@ -120,7 +115,7 @@ export class BlackboardPanel {
         list("set by", (model.setters.get(key) ?? []).map(transition))
         const users = usersOf(model, key)
         sources.append(h("div", { class: "bb-src-title" }, "Transitions"), ...(users.length ? users.map(transition) : [h("span", { class: "bb-src-none" }, "None")]))
-        const editButton = group === "signals" || group === "vars"
+        const editButton = group === "streams" || group === "vars"
             ? h("button", { class: "bb-edit", type: "button", title: `set ${key}`, onclick: (click) => {
                 click.stopPropagation()
                 this.edit(key)
@@ -135,14 +130,7 @@ export class BlackboardPanel {
             preview,
             editButton,
         )
-        // An event's condition gets its own box above the details ("<name> when", then the condition), and the
-        // details below hold only the transitions it drives.
-        const when = event ? h("div", { class: "bb-when" }, h("div", { class: "bb-when-head" }, h("span", { class: "bb-when-name" }, key), " when"), h("div", { class: "bb-when-body" }, renderCel(event.when, names))) : null
-        const element = h("div", { class: "bb-row", "data-key": key }, line, when, h("div", { class: "bb-detail" }, sources, event ? null : full))
-        if (event) {
-            preview.append(renderCel(event.when, names))
-            element.classList.add("wide")
-        }
+        const element = h("div", { class: "bb-row", "data-key": key }, line, h("div", { class: "bb-detail" }, sources, full))
         this.sections.get(group).body.append(element)
         const row = { element, preview, full, group, last: undefined, value: undefined }
         this.rows.set(key, row)
@@ -168,7 +156,7 @@ export class BlackboardPanel {
 
     /** The full value, drawn only while the row is open. */
     drawFull(row) {
-        if (row.group === "events" || !row.element.classList.contains("expanded") || row.drawn === row.last) {
+        if (!row.element.classList.contains("expanded") || row.drawn === row.last) {
             return
         }
         row.drawn = row.last
@@ -219,7 +207,7 @@ export class BlackboardPanel {
             row.element.classList.remove("unset")
         }
         for (const [key, row] of this.rows) {
-            if (row.group !== "events" && !(key in step.blackboard) && !row.editing && row.last !== null) {
+            if (!(key in step.blackboard) && !row.editing && row.last !== null) {
                 row.element.classList.add("unset")
                 row.last = null // drawn as unset (undefined: not drawn yet)
                 row.value = undefined
@@ -307,7 +295,7 @@ export class BlackboardPanel {
     }
 
     publisher(key) {
-        const signal = this.model.signals.get(key)
-        return signal ? publisherOf(this.modules, signal.stream) : null
+        const streamValue = this.model.streamValues.get(key)
+        return streamValue ? publisherOf(this.modules, streamValue.stream) : null
     }
 }

@@ -114,8 +114,7 @@ export function buildModel(definition) {
         }
     }
     const activities = new Map(definition.activities.map((activity) => [activity.name, activity]))
-    const signals = new Map(definition.signals.map((signal) => [signal.name, signal]))
-    const events = new Map(definition.events.map((event) => [event.name, event]))
+    const streamValues = new Map(definition.stream_values.map((value) => [value.name, value]))
     const results = new Map()
     for (const node of definition.nodes) {
         if (node.result) {
@@ -136,8 +135,7 @@ export function buildModel(definition) {
         edges,
         edgeById: new Map(edges.map((edge) => [edge.id, edge])),
         activities,
-        signals,
-        events,
+        streamValues,
         results,
         setters,
         constants: definition.constants,
@@ -163,8 +161,8 @@ export function edgeForRecord(model, record) {
 
 /** Which group a blackboard key belongs in. */
 export function groupOf(model, key) {
-    if (model.signals.has(key)) {
-        return "signals"
+    if (model.streamValues.has(key)) {
+        return "streams"
     }
     if (key in model.vars) {
         return "vars"
@@ -178,15 +176,14 @@ export function groupOf(model, key) {
     return "other"
 }
 
-/** Every name an expression may read: keys, events and outcomes. */
+/** Every name an expression may read: keys and outcomes. */
 export function knownNames(model, blackboard) {
     return new Set([
         ...Object.keys(blackboard ?? {}),
         ...Object.keys(model.constants),
         ...Object.keys(model.vars),
-        ...model.signals.keys(),
+        ...model.streamValues.keys(),
         ...model.results.keys(),
-        ...model.events.keys(),
         ...RESERVED,
     ])
 }

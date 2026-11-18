@@ -21,7 +21,7 @@ const svg = (tag, attrs = {}, parent) => {
 // a dot is a rect whose corners follow the theme's --radius-round (square on a sharp skin)
 const dot = (cx, cy, r, className, parent) => svg("rect", { x: cx - r, y: cy - r, width: 2 * r, height: 2 * r, rx: r, class: `dot ${className}` }, parent)
 
-// container colors: blends of the skin's own colors, kept apart from the kind colors (vars, signals, ...), --primary
+// container colors: blends of the skin's own colors, kept apart from the kind colors (vars, stream values, ...), --primary
 // (the active state) and --danger (faults)
 const HUES = [
     "color-mix(in oklch, var(--info) 55%, var(--ok))",

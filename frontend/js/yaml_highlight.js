@@ -1,15 +1,15 @@
 // YAML highlighting that knows the orchestrator file: besides YAML's own pieces (keys, punctuation, strings, numbers)
-// it colors what each value means from the key it sits under: CEL in `if`/`when`/`expect`/`args`/`set` (blackboard names
+// it colors what each value means from the key it sits under: CEL in `if`/`expect`/`after`/`args`/`set` (blackboard names
 // in their kind's color, operators, functions), RPC names, node names, and the outcomes (succeeded/done, failed).
 
 import { h } from "./details.js"
 
-const CEL_KEYS = new Set(["when", "if", "expect", "after"])
+const CEL_KEYS = new Set(["if", "expect", "after"])
 const CEL_PARENTS = new Set(["set", "args"])
 const RPC_KEYS = new Set(["start", "cancel", "stream"])
 const NODE_KEYS = new Set(["goto", "initial", "root", "fallback"])
 const NODE_LISTS = new Set(["children", "parallel"])
-const NAME_KINDS = { node: "t-node", signal: "t-k-signals", event: "t-k-event", activity: "t-activity" }
+const NAME_KINDS = { node: "t-node", stream_value: "t-k-streams", activity: "t-activity" }
 
 /**
  * @param {string} source YAML text
@@ -92,6 +92,10 @@ function scalar(text, { key, parent, list }, names) {
     const owner = key ?? list
     if (owner && (CEL_KEYS.has(owner) || CEL_PARENTS.has(parent))) {
         return wrap(cel(inner, names))
+    }
+    // `on` names an outcome of the node, or a stream whose every message is offered to the transition
+    if (owner === "on") {
+        return wrap([span(outcomeClass(inner) ?? "t-rpc", inner)])
     }
     if (owner && RPC_KEYS.has(owner)) {
         return wrap([span("t-rpc", inner)])

@@ -1,7 +1,11 @@
-// A thin timeline along the bottom: a tick for every transition, a cursor to drag back through the session, play to
-// replay from there, and Live to follow the orchestrator again.
+// A thin timeline along the bottom: the last 10 minutes, scrolling left as time passes (wheel or swipe sideways to
+// look further back), a tick for every transition, a cursor to drag back through the session, play to replay from
+// there, and Live to follow the orchestrator again.
 
 import { h } from "./details.js"
+
+/** Seconds the track shows at once. */
+const WINDOW_S = 600
 
 export class Timeline {
     /**
@@ -13,6 +17,7 @@ export class Timeline {
         this.history = history
         this.handlers = handlers
         this.index = null
+        this.windowEnd = null // null: the window ends now and follows live time
         this.playing = false
         this.play = h("button", { class: "tl-play", type: "button", title: "replay from here", onclick: () => this.togglePlay() }, "▶")
         this.live = h("button", { class: "tl-live on", type: "button", title: "follow the orchestrator", onclick: () => this.goLive() }, "● Live")
@@ -27,7 +32,7 @@ export class Timeline {
             const fraction = Math.min(1, Math.max(0, (event.clientX - box.left) / box.width))
             const [start, end] = this.range()
             const index = this.history.indexAt(start + fraction * (end - start))
-            if (fraction >= 0.995) {
+            if (fraction >= 0.995 && this.windowEnd == null) {
                 this.goLive()
             } else {
                 this.seek(index, false)
@@ -49,21 +54,52 @@ export class Timeline {
                 at + 1 >= this.history.steps.length - 1 ? this.goLive() : this.seek(at + 1, true)
             }
         })
+        this.track.addEventListener("wheel", (event) => {
+            event.preventDefault()
+            const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY
+            this.scrollTo((this.windowEnd ?? this.now()) + (delta / this.track.clientWidth) * WINDOW_S)
+        }, { passive: false })
         new ResizeObserver(() => this.draw()).observe(this.track)
     }
 
-    range() {
+    /** The newest time there is: live time, or the last step's. */
+    now() {
         const steps = this.history.steps
-        if (!steps.length) {
-            return [0, 1]
+        return Math.max(steps.at(-1)?.time ?? 0, this.liveTime ?? 0)
+    }
+
+    /** The first step's time, where the session began. */
+    began() {
+        return this.history.steps[0]?.time ?? this.now()
+    }
+
+    /** Move the window to end at `end`, clamped to the session; at now it follows live time again. */
+    scrollTo(end) {
+        const now = this.now()
+        const clamped = Math.max(Math.min(now, this.began() + WINDOW_S), Math.min(now, end))
+        this.windowEnd = clamped >= now ? null : clamped
+        this.draw()
+    }
+
+    /** The times the track shows: the last WINDOW_S seconds up to the window's end. */
+    range() {
+        const end = this.windowEnd ?? this.now()
+        return [end - WINDOW_S, end]
+    }
+
+    /** Scroll so a rewound cursor stays on the track. */
+    keepInView(time) {
+        const [start, end] = this.range()
+        if (time < start || time > end) {
+            this.scrollTo(time + WINDOW_S * 0.2)
         }
-        const start = steps[0].time
-        const end = Math.max(steps.at(-1).time, this.liveTime ?? 0, start + 1)
-        return [start, end]
     }
 
     seek(index, animate) {
         this.index = index
+        if (this.history.steps[index]) {
+            this.keepInView(this.history.steps[index].time)
+        }
         this.live.classList.toggle("on", false)
         this.handlers.onSeek(index, animate)
         this.draw()
@@ -72,6 +108,7 @@ export class Timeline {
     goLive() {
         this.stopPlay()
         this.index = null
+        this.windowEnd = null
         this.live.classList.add("on")
         this.handlers.onSeek(null, false)
         this.draw()
@@ -100,6 +137,7 @@ export class Timeline {
                 this.index++
                 this.handlers.onSeek(this.index, true)
             }
+            this.keepInView(clock)
             if (this.index + 1 >= steps.length) {
                 this.goLive()
                 return
@@ -117,7 +155,7 @@ export class Timeline {
         this.play.textContent = "▶"
     }
 
-    /** Redraw: ticks for transitions (faults and edits stand out), and the cursor. */
+    /** Redraw: minute marks, ticks for transitions (faults and edits stand out), and the cursor. */
     draw(liveTime) {
         if (liveTime != null) {
             this.liveTime = liveTime
@@ -132,9 +170,25 @@ export class Timeline {
         const color = (name) => style.getPropertyValue(name).trim() || style.color
         const [start, end] = this.range()
         const x = (time) => ((time - start) / (end - start)) * box.width
+        const began = this.began()
         context.fillStyle = color("--border")
-        context.fillRect(0, box.height / 2 - 1, box.width, 2)
-        for (const step of this.history.steps) {
+        context.fillRect(Math.max(0, x(began)), box.height / 2 - 1, box.width, 2)
+        // a faint mark each minute of the session, labeled with its clock, so the track visibly scrolls
+        context.font = `9px ${style.fontFamily}`
+        context.textBaseline = "top"
+        for (let minute = Math.max(0, Math.ceil((start - began) / 60)); began + minute * 60 <= end; minute++) {
+            const at = Math.round(x(began + minute * 60)) + 0.5
+            context.fillStyle = color("--border")
+            context.fillRect(at, 0, 1, box.height)
+            context.fillStyle = color("--muted-fg")
+            context.fillText(`${minute}:00`, at + 3, 1)
+        }
+        const steps = this.history.steps
+        for (let i = this.history.indexAt(start); i < steps.length && steps[i].time <= end; i++) {
+            const step = steps[i]
+            if (step.time < start) {
+                continue
+            }
             const kinds = new Set(step.effects.map((effect) => effect.kind))
             const fault = kinds.has("fault")
             const edit = step.item.kind === "edit"
@@ -145,12 +199,14 @@ export class Timeline {
             const height = fault || edit ? box.height - 4 : box.height * 0.6
             context.fillRect(Math.round(x(step.time)) - 0.5, (box.height - height) / 2, fault ? 3 : 1.5, height)
         }
-        const steps = this.history.steps
-        const at = this.index == null ? end : this.playClock ?? steps[this.index]?.time ?? end
-        this.cursor.style.left = `${Math.min(box.width, x(at))}px`
+        const now = this.now()
+        const at = this.index == null ? now : this.playClock ?? steps[this.index]?.time ?? now
+        const cursorX = x(at)
+        this.cursor.style.left = `${Math.min(box.width, Math.max(0, cursorX))}px`
+        this.cursor.hidden = cursorX < 0 || cursorX > box.width
         this.cursor.classList.toggle("live", this.index == null)
-        const seconds = Math.max(0, at - start)
-        const behind = this.index == null ? "" : ` · −${(end - at).toFixed(1)}s`
+        const seconds = Math.max(0, at - began)
+        const behind = this.index == null ? "" : ` · −${(now - at).toFixed(1)}s`
         this.label.textContent = steps.length ? `${formatClock(seconds)}${behind}` : ""
     }
 }

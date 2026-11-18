@@ -2,7 +2,7 @@
 // JSON drawn with colors.
 
 import { renderCel } from "./cel.js"
-import { groupOf, knownNames } from "./model.js"
+import { RESERVED, groupOf, knownNames } from "./model.js"
 
 export const h = (tag, attrs = {}, ...children) => {
     const element = document.createElement(tag)
@@ -114,7 +114,7 @@ function inline(value) {
 export function namesFor(model, blackboard) {
     return {
         known: knownNames(model, blackboard),
-        kindOf: (name) => (model.events.has(name) ? "event" : ["succeeded", "done", "failed"].includes(name) ? "outcome" : groupOf(model, name)),
+        kindOf: (name) => (RESERVED.includes(name) ? "outcome" : groupOf(model, name)),
     }
 }
 
@@ -239,8 +239,10 @@ export function edgeDetails(model, id, step) {
         )
     }
     const transition = edge.transition
-    const trigger = transition.on != null
-        ? h("span", {}, "when the signal ", h("span", { class: "pill pill-signals", "data-key": transition.on }, transition.on), " arrives")
+    const trigger = transition.on != null && RESERVED.includes(transition.on)
+        ? h("span", {}, `when ${edge.from} reaches `, h("span", { class: "pill pill-outcome" }, transition.on))
+        : transition.on != null
+        ? h("span", {}, "on each message on ", h("code", { class: "d-mono d-stream" }, transition.on))
         : transition.after != null
         ? h("span", {}, cel(transition.after), " seconds after entering")
         : h("span", {}, "as soon as its condition holds")
@@ -266,24 +268,22 @@ export function valueDetails(model, key, step, modules) {
     const names = namesFor(model, step?.blackboard)
     const kind = names.kindOf(key)
     const has = step && key in step.blackboard
-    const event = model.events.get(key)
-    const signal = model.signals.get(key)
-    const publisher = signal ? publisherOf(modules, signal.stream) : null
+    const streamValue = model.streamValues.get(key)
+    const publisher = streamValue ? publisherOf(modules, streamValue.stream) : null
     return h(
         "div",
         { class: "details value-details" },
         h("div", { class: "d-title" }, key, h("span", { class: `d-chip pill-${kind}` }, kind)),
-        event ? row("when", renderCel(event.when, names)) : null,
         kind === "outcome" ? h("p", { class: "d-note" }, "true for the node whose transition reads it, when it reached that outcome") : null,
-        signal ? row("stream", mono(signal.stream + (signal.field ? `.${signal.field}` : ""))) : null,
+        streamValue ? row("stream", mono(`${streamValue.stream}.${streamValue.field}`)) : null,
         publisher ? row("set by", mono(publisher)) : null,
         model.results.has(key) ? row("set by", ...model.results.get(key).map((n) => mono(`${n} (its activity's return)`))) : null,
         model.setters.has(key) ? row("set by", h("span", {}, `${model.setters.get(key).length} transition(s)`)) : null,
-        event || kind === "outcome" ? null : h("pre", { class: "d-json" }, has ? renderJson(step.blackboard[key]) : h("span", { class: "j-null" }, "unset")),
+        kind === "outcome" ? null : h("pre", { class: "d-json" }, has ? renderJson(step.blackboard[key]) : h("span", { class: "j-null" }, "unset")),
     )
 }
 
-/** The module whose output stream a signal reads, from the gateway's module list. */
+/** The module whose output stream a stream value reads, from the gateway's module list. */
 export function publisherOf(modules, stream) {
     const [module, name] = stream.split(".")
     for (const live of modules ?? []) {
