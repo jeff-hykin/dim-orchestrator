@@ -344,7 +344,7 @@ function render(mode) {
     }
     graph.show(step, animate ? { frames } : {})
     app.shownSeq = step.seq
-    panel.setEditable(timeline.index == null && app.status === "connected")
+    panel.setEditable(timeline.index == null && app.status === "connected" && !app.readOnly)
     timeline.draw(Date.now() / 1000 + app.clockOffset)
     const rewound = timeline.index != null
     body.classList.toggle("rewound", rewound)
@@ -377,12 +377,12 @@ function setStatus(status, detail = "") {
         stopped: "orchestrator stopped",
     }[status]
     chip.title = detail
-    source.setEditable(status === "connected")
+    source.setEditable(status === "connected" && !app.readOnly)
     const empty = $("#empty")
     const showEmpty = !app.model && status !== "connected"
     empty.hidden = !showEmpty
     $("#empty-detail").textContent = status === "gateway-down" ? `The dimos gateway did not answer${detail ? `: ${detail}` : ""}.` : "Start a blueprint with an Orchestrator module, e.g."
-    panel.setEditable?.(status === "connected" && timeline.index == null)
+    panel.setEditable?.(status === "connected" && !app.readOnly && timeline.index == null)
 }
 
 function fillPicker(orchestrators) {
@@ -420,7 +420,93 @@ async function discover() {
     }
 }
 
+/** Draw a new file: the graph, the panel and an empty history. */
+function showFile(definition, file) {
+    app.model = buildModel(definition)
+    app.file = file
+    $("#file").textContent = file.split("/").pop()
+    $("#file").title = file
+    app.history.steps = []
+    app.history.faulted = false
+    app.shownSeq = 0
+    graph.setModel(app.model)
+    panel.setModel(app.model)
+    timeline.goLive()
+}
+
+/** One orchestrator_state message as a journal step, its blackboard diffed against the step before. */
+function stateEntry(message, before, time) {
+    const constants = message.definition.constants ?? {}
+    const blackboard = before ? message.blackboard ?? {} : { ...constants, ...message.blackboard }
+    const previous = before?.blackboard ?? {}
+    return {
+        seq: message.seq,
+        time,
+        item: { kind: before ? "step" : "joined", handled: message.handled },
+        effects: [
+            ...(message.transitions ?? []).map((transition) => ({ kind: "transition", ...transition })),
+            ...(message.fault ? [{ kind: "fault", ...message.fault }] : []),
+        ],
+        changed: Object.fromEntries(Object.entries(blackboard).filter(([key, value]) => JSON.stringify(previous[key]) !== JSON.stringify(value))),
+        removed: Object.keys(previous).filter((key) => !(key in blackboard) && !(key in constants)),
+        active: message.active ?? [],
+        calls: (message.calls ?? []).map((call, index) => ({ id: index, uses: [], ...call })),
+        timers: (message.timers ?? []).map((timer) => ({ ...timer, due: time + timer.due_in_s })),
+        outcomes: [],
+    }
+}
+
+/** Follow an orchestrator without the journal RPCs through its orchestrator_state topic: view only. */
+async function followStream(moduleId, generation) {
+    setStatus("connecting")
+    const queue = []
+    let wake = null
+    const unsubscribe = await api.watchState((message) => {
+        queue.push(message)
+        wake?.()
+    })
+    try {
+        let caughtUp = false
+        while (generation === app.generation) {
+            if (!queue.length) {
+                // a message wakes it; the timeout lets a picked orchestrator or a restart be noticed
+                await new Promise((resolve) => {
+                    wake = resolve
+                    setTimeout(resolve, SEARCH_S * 1000)
+                })
+                wake = null
+                continue
+            }
+            const message = queue.shift()
+            const history = app.history
+            if (!app.model || app.moduleId !== moduleId || message.seq < history.seq || JSON.stringify(app.model.definition) !== JSON.stringify(message.definition)) {
+                showFile(message.definition, `${moduleId} (orchestrator_state)`)
+                app.moduleId = moduleId
+                app.clockOffset = 0
+                source.setSource(app.file, "")
+                source.setNames(namesFor(app.model, {}))
+                setStatus("connected")
+                caughtUp = false
+            }
+            const added = history.add([stateEntry(message, history.last, Date.now() / 1000)])
+            if (added.length && timeline.index == null) {
+                render(caughtUp && !queue.length ? "live" : "jump")
+            } else if (added.length) {
+                timeline.draw()
+            }
+            caughtUp ||= !queue.length
+        }
+    } finally {
+        unsubscribe()
+    }
+}
+
 async function follow(moduleId, generation) {
+    // ?stream follows the stream even where the journal RPCs exist, to try that mode
+    app.readOnly = new URLSearchParams(location.search).has("stream") || !api.hasJournal(app.modules.find((module) => module.id === moduleId))
+    if (app.readOnly) {
+        return followStream(moduleId, generation)
+    }
     setStatus("connecting")
     const found = await api.getDefinition(moduleId)
     const snapshot = await api.getState(moduleId)
@@ -430,16 +516,7 @@ async function follow(moduleId, generation) {
     let first = await api.getJournal(moduleId, 0)
     const restarted = history.steps.length && (first.seq < history.seq || first.entries[0]?.time !== history.steps[0]?.time)
     if (!sameFile || restarted) {
-        app.model = buildModel(found.definition)
-        app.file = found.file
-        $("#file").textContent = found.file.split("/").pop()
-        $("#file").title = found.file
-        history.steps = []
-        history.faulted = false
-        app.shownSeq = 0
-        graph.setModel(app.model)
-        panel.setModel(app.model)
-        timeline.goLive()
+        showFile(found.definition, found.file)
     }
     app.moduleId = moduleId
     source.setSource(found.file, found.source)

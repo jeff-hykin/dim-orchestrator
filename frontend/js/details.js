@@ -159,7 +159,7 @@ export function nodeDetails(model, id, step) {
                 ...[
                     active && call ? h("span", { class: `d-chip ${call.phase}`, title: call.rpc }, call.phase === "held" ? "held: waiting on a resource" : `calling ${call.rpc}`) : null,
                     outcome ? h("span", { class: `d-chip ${outcome}` }, outcome) : null,
-                    ...(step ? timers.map((t) => h("span", { class: "d-chip" }, `transition ${t.transition + 1} in ${Math.max(0, t.due - step.time).toFixed(1)}s`)) : []),
+                    ...(step ? timers.map((t) => h("span", { class: "d-chip" }, `${t.transition == null ? "a transition" : `transition ${t.transition + 1}`} in ${Math.max(0, t.due - step.time).toFixed(1)}s`)) : []),
                 ].filter(Boolean),
                 !(active && call) && !outcome && !(step && timers.length) ? h("span", { class: "d-idle" }, active ? "active" : "idle") : null,
             ),

@@ -28,10 +28,13 @@ export async function runningModules() {
 
 /** The running modules that are orchestrators: an Orchestrator class, or anything with its RPCs. */
 export function orchestratorsIn(modules) {
-    return modules.filter((module) => {
-        const names = new Set((module.rpcs ?? []).map((rpc) => rpc.name))
-        return module.class === "Orchestrator" || (names.has("journal") && names.has("definition") && names.has("state"))
-    })
+    return modules.filter((module) => module.class === "Orchestrator" || hasJournal(module))
+}
+
+/** Whether a module has the journal RPCs; without them the app follows its orchestrator_state stream instead. */
+export function hasJournal(module) {
+    const names = new Set((module?.rpcs ?? []).map((rpc) => rpc.name))
+    return names.has("journal") && names.has("definition") && names.has("state")
 }
 
 /** Call one RPC of a running module. */
@@ -53,3 +56,20 @@ export const getJournal = (moduleId, after, limit = 1000) => call(moduleId, "jou
 export const setValue = (moduleId, key, value) => call(moduleId, "set_value", { key, value })
 /** Replace the orchestrator's file: the problems found (nothing changed), or [] once it runs the new file. */
 export const setSource = (moduleId, source) => call(moduleId, "set_source", { source })
+
+const STATE_KEY = "dimos/orchestrator_state/std_msgs.String" // dimos-yaml-check: ignore
+
+/** `callback(state)` with each orchestrator_state message, parsed, straight from Desktop's zenoh-gateway (every step,
+ * in order). Returns the unsubscribe. */
+export async function watchState(callback) {
+    const [{ getZenoh }, msgs] = await Promise.all([
+        import("../vendor/dim-app/zenoh.js"),
+        import(new URL(`${GATEWAY}msgs.js`, location.href).href),
+    ])
+    return getZenoh().subscribe(STATE_KEY, { delivery: "reliable" }, (message) => {
+        const text = msgs.decodeMessage(message)?.data
+        if (text) {
+            callback(JSON.parse(text))
+        }
+    })
+}
