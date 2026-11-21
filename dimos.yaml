@@ -6,7 +6,6 @@ uses:
     "@dimos-gateway":
         - GET active/modules
         - POST active/modules/{id}/rpcs/{name}
-        - GET msgs.js
     "@desktop-gateway":
         - GET management/gateways/zenoh
     "@zenoh-gateway": ">=0.5 <0.6"

@@ -59,17 +59,19 @@ export const setSource = (moduleId, source) => call(moduleId, "set_source", { so
 
 const STATE_KEY = "dimos/orchestrator_state/std_msgs.String" // dimos-yaml-check: ignore
 
+/** A std_msgs.String's text from its LCM bytes: an 8-byte hash, a big-endian int32 length (counting a closing NUL),
+ * then UTF-8. Read here rather than with the gateway's msgs.js, which a gateway may take minutes to build. */
+function lcmString(bytes) {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+    const length = view.getInt32(8)
+    return new TextDecoder().decode(bytes.subarray(12, 12 + Math.max(0, length - 1)))
+}
+
 /** `callback(state)` with each orchestrator_state message, parsed, straight from Desktop's zenoh-gateway (every step,
  * in order). Returns the unsubscribe. */
 export async function watchState(callback) {
-    const [{ getZenoh }, msgs] = await Promise.all([
-        import("../vendor/dim-app/zenoh.js"),
-        import(new URL(`${GATEWAY}msgs.js`, location.href).href),
-    ])
+    const { getZenoh } = await import("../vendor/dim-app/zenoh.js")
     return getZenoh().subscribe(STATE_KEY, { delivery: "reliable" }, (message) => {
-        const text = msgs.decodeMessage(message)?.data
-        if (text) {
-            callback(JSON.parse(text))
-        }
+        callback(JSON.parse(lcmString(message.bytes)))
     })
 }
