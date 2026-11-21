@@ -406,9 +406,11 @@ async function discover() {
         try {
             app.modules = await api.runningModules()
         } catch (error) {
-            setStatus("gateway-down", error.message)
-            await wait(SEARCH_S)
-            continue
+            // a gateway that can't list the run (down, or from an older checkout than the run's) still leaves the
+            // orchestrator_state topic, which needs only Desktop's zenoh-gateway
+            console.warn("the dimos gateway can't list modules; following orchestrator_state:", error.message)
+            app.modules = []
+            return "orchestrator"
         }
         const orchestrators = api.orchestratorsIn(app.modules)
         fillPicker(orchestrators)
