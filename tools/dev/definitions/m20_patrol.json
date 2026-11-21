@@ -1,0 +1,1086 @@
+{
+ "root": "Robot",
+ "constants": {
+  "goals": [
+   "hardware",
+   "kitchenette",
+   "lobby",
+   "common_area",
+   "side_entrance",
+   "bathroom",
+   "garage",
+   "flag",
+   "robot_area",
+   "hugo"
+  ],
+  "approach_location": "dock_approach",
+  "predock_location": "predock",
+  "low_battery": 0.7,
+  "full_battery": 0.8,
+  "critical_battery": 0.1,
+  "recover_battery": 0.2,
+  "retry_s": 2.0,
+  "not_charging_s": 60.0,
+  "nav_timeout_s": 600.0,
+  "goal_attempts": 3,
+  "dock_attempts": 3,
+  "CHARGING": 1,
+  "DISCHARGING": 2,
+  "NOT_CHARGING": 3,
+  "PREEMPTED": 2,
+  "SUCCEEDED": 3,
+  "ABORTED": 4
+ },
+ "stream_values": [
+  {
+   "name": "battery",
+   "stream": "M20Connection.battery",
+   "field": "percentage"
+  },
+  {
+   "name": "power",
+   "stream": "M20Connection.battery",
+   "field": "power_supply_status"
+  },
+  {
+   "name": "request",
+   "stream": "Orchestrator.orchestrator_request",
+   "field": "data"
+  },
+  {
+   "name": "nav_state",
+   "stream": "MLSPlannerNative.nav_status",
+   "field": "status"
+  },
+  {
+   "name": "nav_stamp",
+   "stream": "MLSPlannerNative.nav_status",
+   "field": "goal_id.stamp"
+  }
+ ],
+ "vars": {
+  "goal.index": 0,
+  "goal.tries": 0,
+  "skips": 0,
+  "streak": 0,
+  "dock.tries": 0,
+  "dock.wait": 0,
+  "dock.hold": 0
+ },
+ "activities": [
+  {
+   "name": "navigate",
+   "start": "MLSPlannerNative.go_to",
+   "cancel": "MLSPlannerNative.stop_navigation",
+   "uses": [
+    "base"
+   ]
+  },
+  {
+   "name": "locate",
+   "start": "LocalMapRelocalization.location",
+   "cancel": null,
+   "uses": []
+  },
+  {
+   "name": "dock",
+   "start": "M20Connection.dock",
+   "cancel": null,
+   "uses": []
+  },
+  {
+   "name": "undock",
+   "start": "M20Connection.undock",
+   "cancel": null,
+   "uses": []
+  },
+  {
+   "name": "sit",
+   "start": "M20Connection.liedown",
+   "cancel": null,
+   "uses": []
+  },
+  {
+   "name": "stand",
+   "start": "M20Connection.standup",
+   "cancel": null,
+   "uses": []
+  }
+ ],
+ "resources": [
+  "base"
+ ],
+ "nodes": [
+  {
+   "name": "Robot",
+   "transitions": [],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [
+    "Mission",
+    "Depleted"
+   ],
+   "parallel": [],
+   "initial": "Mission",
+   "outcomes": []
+  },
+  {
+   "name": "Mission",
+   "transitions": [
+    {
+     "goto": "Depleted",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "battery < critical_battery && power == DISCHARGING"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [
+    "Start",
+    "Patrol",
+    "Charging"
+   ],
+   "parallel": [],
+   "initial": "Start",
+   "outcomes": []
+  },
+  {
+   "name": "Start",
+   "transitions": [
+    {
+     "goto": "Charging",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "power == CHARGING || power == NOT_CHARGING"
+    },
+    {
+     "goto": "Patrol",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "power == DISCHARGING"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Patrol",
+   "transitions": [
+    {
+     "goto": "Charging",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "battery < low_battery && dock.wait == 0"
+    },
+    {
+     "goto": "Charging",
+     "mode": "graceful",
+     "set": {
+      "dock.wait": "0",
+      "dock.hold": "1"
+     },
+     "on": "Orchestrator.orchestrator_request",
+     "after": null,
+     "if": "request == 'dock'"
+    },
+    {
+     "goto": "Charging",
+     "mode": "graceful",
+     "set": {
+      "streak": "0"
+     },
+     "on": null,
+     "after": null,
+     "if": "streak >= size(goals)"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [
+    "Lookup",
+    "Going",
+    "Retry"
+   ],
+   "parallel": [],
+   "initial": "Lookup",
+   "outcomes": []
+  },
+  {
+   "name": "Lookup",
+   "transitions": [
+    {
+     "goto": "Going",
+     "mode": "graceful",
+     "set": {},
+     "on": "succeeded",
+     "after": null,
+     "if": null
+    },
+    {
+     "goto": "Retry",
+     "mode": "graceful",
+     "set": {},
+     "on": "failed",
+     "after": null,
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "locate",
+   "args": {
+    "name": "goals[goal.index % size(goals)]"
+   },
+   "result": "goal.pose",
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Going",
+   "transitions": [
+    {
+     "goto": "Lookup",
+     "mode": "graceful",
+     "set": {
+      "goal.index": "goal.index + 1",
+      "goal.tries": "0",
+      "streak": "0",
+      "dock.wait": "dock.wait > 0 ? dock.wait - 1 : 0"
+     },
+     "on": null,
+     "after": null,
+     "if": "nav_state == SUCCEEDED && nav_stamp == nav.goal"
+    },
+    {
+     "goto": "Retry",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "(nav_state == ABORTED || nav_state == PREEMPTED) && nav_stamp == nav.goal"
+    },
+    {
+     "goto": "Retry",
+     "mode": "graceful",
+     "set": {},
+     "on": "failed",
+     "after": null,
+     "if": null
+    },
+    {
+     "goto": "Lookup",
+     "mode": "graceful",
+     "set": {
+      "goal.index": "goal.index + 1",
+      "goal.tries": "0",
+      "skips": "skips + 1",
+      "streak": "streak + 1",
+      "dock.wait": "dock.wait > 0 ? dock.wait - 1 : 0"
+     },
+     "on": null,
+     "after": "nav_timeout_s",
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "navigate",
+   "args": {
+    "pose": "goal.pose"
+   },
+   "result": "nav.goal",
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Retry",
+   "transitions": [
+    {
+     "goto": "Lookup",
+     "mode": "graceful",
+     "set": {
+      "goal.tries": "goal.tries + 1"
+     },
+     "on": null,
+     "after": "retry_s",
+     "if": "goal.tries + 1 < goal_attempts"
+    },
+    {
+     "goto": "Lookup",
+     "mode": "graceful",
+     "set": {
+      "goal.index": "goal.index + 1",
+      "goal.tries": "0",
+      "skips": "skips + 1",
+      "streak": "streak + 1",
+      "dock.wait": "dock.wait > 0 ? dock.wait - 1 : 0"
+     },
+     "on": null,
+     "after": "retry_s",
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Charging",
+   "transitions": [
+    {
+     "goto": "Patrol",
+     "mode": "graceful",
+     "set": {},
+     "on": "done",
+     "after": null,
+     "if": null
+    },
+    {
+     "goto": "Patrol",
+     "mode": "graceful",
+     "set": {},
+     "on": "failed",
+     "after": null,
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [
+    "Arrive",
+    "ApproachLookup",
+    "Approach",
+    "ApproachRetry",
+    "PredockLookup",
+    "Predock",
+    "Docking",
+    "TopUp",
+    "Redocking",
+    "RedockRetry",
+    "Undocking",
+    "UndockRetry"
+   ],
+   "parallel": [],
+   "initial": "Arrive",
+   "outcomes": [
+    "done",
+    "failed"
+   ]
+  },
+  {
+   "name": "Arrive",
+   "transitions": [
+    {
+     "goto": "TopUp",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "power == CHARGING || power == NOT_CHARGING"
+    },
+    {
+     "goto": "ApproachLookup",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "ApproachLookup",
+   "transitions": [
+    {
+     "goto": "Approach",
+     "mode": "graceful",
+     "set": {},
+     "on": "succeeded",
+     "after": null,
+     "if": null
+    },
+    {
+     "goto": "ApproachRetry",
+     "mode": "graceful",
+     "set": {},
+     "on": "failed",
+     "after": null,
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "locate",
+   "args": {
+    "name": "approach_location"
+   },
+   "result": "approach.pose",
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Approach",
+   "transitions": [
+    {
+     "goto": "PredockLookup",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "nav_state == SUCCEEDED && nav_stamp == nav.goal"
+    },
+    {
+     "goto": "ApproachRetry",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "(nav_state == ABORTED || nav_state == PREEMPTED) && nav_stamp == nav.goal"
+    },
+    {
+     "goto": "ApproachRetry",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": "nav_timeout_s",
+     "if": null
+    },
+    {
+     "goto": "ApproachRetry",
+     "mode": "graceful",
+     "set": {},
+     "on": "failed",
+     "after": null,
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "navigate",
+   "args": {
+    "pose": "approach.pose",
+    "face_heading": "true"
+   },
+   "result": "nav.goal",
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "ApproachRetry",
+   "transitions": [
+    {
+     "goto": "ApproachLookup",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": "retry_s",
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "PredockLookup",
+   "transitions": [
+    {
+     "goto": "Predock",
+     "mode": "graceful",
+     "set": {},
+     "on": "succeeded",
+     "after": null,
+     "if": null
+    },
+    {
+     "goto": "ApproachRetry",
+     "mode": "graceful",
+     "set": {},
+     "on": "failed",
+     "after": null,
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "locate",
+   "args": {
+    "name": "predock_location"
+   },
+   "result": "predock.pose",
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Predock",
+   "transitions": [
+    {
+     "goto": "Docking",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "nav_state == SUCCEEDED && nav_stamp == nav.goal"
+    },
+    {
+     "goto": "ApproachRetry",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "(nav_state == ABORTED || nav_state == PREEMPTED) && nav_stamp == nav.goal"
+    },
+    {
+     "goto": "ApproachRetry",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": "nav_timeout_s",
+     "if": null
+    },
+    {
+     "goto": "ApproachRetry",
+     "mode": "graceful",
+     "set": {},
+     "on": "failed",
+     "after": null,
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "navigate",
+   "args": {
+    "pose": "predock.pose",
+    "face_heading": "true"
+   },
+   "result": "nav.goal",
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Docking",
+   "transitions": [
+    {
+     "goto": "TopUp",
+     "mode": "graceful",
+     "set": {
+      "dock.tries": "0"
+     },
+     "on": "succeeded",
+     "after": null,
+     "if": null
+    },
+    {
+     "goto": "ApproachLookup",
+     "mode": "graceful",
+     "set": {
+      "dock.tries": "dock.tries + 1"
+     },
+     "on": "failed",
+     "after": null,
+     "if": "dock.tries + 1 < dock_attempts"
+    },
+    {
+     "goto": "failed",
+     "mode": "graceful",
+     "set": {
+      "dock.tries": "0",
+      "dock.wait": "size(goals)",
+      "dock.hold": "0"
+     },
+     "on": "failed",
+     "after": null,
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "dock",
+   "args": {},
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "TopUp",
+   "transitions": [
+    {
+     "goto": "Undocking",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "battery >= full_battery && dock.hold == 0"
+    },
+    {
+     "goto": "TopUp",
+     "mode": "graceful",
+     "set": {
+      "dock.hold": "0"
+     },
+     "on": "Orchestrator.orchestrator_request",
+     "after": null,
+     "if": "request == 'undock'"
+    },
+    {
+     "goto": "Redocking",
+     "mode": "graceful",
+     "set": {},
+     "on": "failed",
+     "after": null,
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [
+    "Filling",
+    "Stalled"
+   ],
+   "parallel": [],
+   "initial": "Filling",
+   "outcomes": [
+    "failed"
+   ]
+  },
+  {
+   "name": "Filling",
+   "transitions": [
+    {
+     "goto": "Stalled",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "power != CHARGING"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Stalled",
+   "transitions": [
+    {
+     "goto": "Filling",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "power == CHARGING"
+    },
+    {
+     "goto": "failed",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": "not_charging_s",
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Redocking",
+   "transitions": [
+    {
+     "goto": "ApproachLookup",
+     "mode": "graceful",
+     "set": {},
+     "on": "succeeded",
+     "after": null,
+     "if": null
+    },
+    {
+     "goto": "RedockRetry",
+     "mode": "graceful",
+     "set": {},
+     "on": "failed",
+     "after": null,
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "undock",
+   "args": {},
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "RedockRetry",
+   "transitions": [
+    {
+     "goto": "Redocking",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": "retry_s",
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Undocking",
+   "transitions": [
+    {
+     "goto": "done",
+     "mode": "graceful",
+     "set": {},
+     "on": "succeeded",
+     "after": null,
+     "if": null
+    },
+    {
+     "goto": "UndockRetry",
+     "mode": "graceful",
+     "set": {},
+     "on": "failed",
+     "after": null,
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "undock",
+   "args": {},
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "UndockRetry",
+   "transitions": [
+    {
+     "goto": "Undocking",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": "retry_s",
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Depleted",
+   "transitions": [
+    {
+     "goto": "Mission",
+     "mode": "graceful",
+     "set": {
+      "dock.tries": "0",
+      "dock.wait": "0",
+      "dock.hold": "0"
+     },
+     "on": null,
+     "after": null,
+     "if": "power != DISCHARGING"
+    },
+    {
+     "goto": "Mission",
+     "mode": "graceful",
+     "set": {
+      "dock.tries": "0",
+      "dock.wait": "0",
+      "dock.hold": "0"
+     },
+     "on": "done",
+     "after": null,
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [
+    "SitDown",
+    "SitRetry",
+    "Resting",
+    "StandUp",
+    "StandRetry"
+   ],
+   "parallel": [],
+   "initial": "SitDown",
+   "outcomes": [
+    "done"
+   ]
+  },
+  {
+   "name": "SitDown",
+   "transitions": [
+    {
+     "goto": "Resting",
+     "mode": "graceful",
+     "set": {},
+     "on": "succeeded",
+     "after": null,
+     "if": "sat"
+    },
+    {
+     "goto": "SitRetry",
+     "mode": "graceful",
+     "set": {},
+     "on": "succeeded",
+     "after": null,
+     "if": null
+    },
+    {
+     "goto": "SitRetry",
+     "mode": "graceful",
+     "set": {},
+     "on": "failed",
+     "after": null,
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "sit",
+   "args": {},
+   "result": "sat",
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "SitRetry",
+   "transitions": [
+    {
+     "goto": "SitDown",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": "retry_s",
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "Resting",
+   "transitions": [
+    {
+     "goto": "StandUp",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": null,
+     "if": "battery >= recover_battery"
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "StandUp",
+   "transitions": [
+    {
+     "goto": "done",
+     "mode": "graceful",
+     "set": {},
+     "on": "succeeded",
+     "after": null,
+     "if": "stood"
+    },
+    {
+     "goto": "StandRetry",
+     "mode": "graceful",
+     "set": {},
+     "on": "succeeded",
+     "after": null,
+     "if": null
+    },
+    {
+     "goto": "StandRetry",
+     "mode": "graceful",
+     "set": {},
+     "on": "failed",
+     "after": null,
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": "stand",
+   "args": {},
+   "result": "stood",
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  },
+  {
+   "name": "StandRetry",
+   "transitions": [
+    {
+     "goto": "StandUp",
+     "mode": "graceful",
+     "set": {},
+     "on": null,
+     "after": "retry_s",
+     "if": null
+    }
+   ],
+   "requires": [],
+   "ensures": [],
+   "claims": [],
+   "activity": null,
+   "args": {},
+   "result": null,
+   "children": [],
+   "parallel": [],
+   "initial": null,
+   "outcomes": []
+  }
+ ]
+}

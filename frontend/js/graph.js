@@ -4,6 +4,7 @@
 import { namesFor } from "./details.js"
 import { boundaryPoint, edgeShape, HEADER, labelBox, layoutGraph, PAD, sampleSegments, segmentsPath } from "./layout.js"
 import { layoutElk } from "./layout_elk.js"
+import { LEAD, portOf, ROW, stacked, stackOf, stackTop } from "./stack.js"
 
 // how the graph is laid out and its edges drawn: our own nested layout with curves, or ELK with one of its routings
 export const LAYOUT_STYLES = { curves: "Curves", arcs: "Arcs", "elk-polyline": "Corners", "elk-splines": "Splines" }
@@ -23,6 +24,31 @@ const dot = (cx, cy, r, className, parent) => svg("rect", { x: cx - r, y: cy - r
 
 // container colors: blends of the skin's own colors, kept apart from the kind colors (vars, stream values, ...), --primary
 // (the active state) and --danger (faults)
+/** A polyline as cubic segments, its corners rounded (radius up to 10, less where the legs are short). */
+function roundedSegments(points) {
+    const clean = points.filter((point, i) => i === 0 || Math.hypot(point.x - points[i - 1].x, point.y - points[i - 1].y) > 0.5)
+    const line = (a, b) => [a, a, b, b]
+    if (clean.length < 3) {
+        return clean.length === 2 ? [line(clean[0], clean[1])] : []
+    }
+    const segments = []
+    let at = clean[0]
+    for (let i = 1; i < clean.length - 1; i++) {
+        const [p, c, n] = [clean[i - 1], clean[i], clean[i + 1]]
+        const r = Math.min(10, Math.hypot(c.x - p.x, c.y - p.y) / 2, Math.hypot(n.x - c.x, n.y - c.y) / 2)
+        const toward = (from, to, d) => {
+            const length = Math.hypot(to.x - from.x, to.y - from.y) || 1
+            return { x: from.x + ((to.x - from.x) / length) * d, y: from.y + ((to.y - from.y) / length) * d }
+        }
+        const enter = toward(c, p, r)
+        const leave = toward(c, n, r)
+        segments.push(line(at, enter), [enter, c, c, leave])
+        at = leave
+    }
+    segments.push(line(at, clean.at(-1)))
+    return segments
+}
+
 const HUES = [
     "color-mix(in oklch, var(--info) 55%, var(--ok))",
     "color-mix(in oklch, var(--accent-alt) 55%, var(--danger))",
@@ -74,7 +100,7 @@ function labelTip(box, anchor) {
 const FIRE_MS = 900
 const FIRE_BACKLOG = 8
 
-const short = (text, length = 26) => (text.length > length ? `${text.slice(0, length - 1)}…` : text)
+const short = (text, length = 34) => (text.length > length ? `${text.slice(0, length - 1)}…` : text)
 
 /** The words an edge's label carries. */
 export function edgeLabel(edge) {
@@ -137,13 +163,23 @@ export class GraphView {
         if (node.kind === "final") {
             return { w: 46, h: 40 }
         }
+        // the stack of its outgoing conditions: one row each, right-aligned
+        const stack = this.model ? stackOf(this.model, node.id) : []
+        const rows = Math.max(0, ...stack.map((edge) => width(this.rowText(edge), `10.5px ${mono}`) + 34))
         if (node.kind === "compound" || node.kind === "parallel") {
-            return { w: width(node.id, `600 13px ${sans}`) + (node.kind === "parallel" ? 90 : 40), h: HEADER }
+            const head = HEADER + (stack.length ? stack.length * ROW + 6 : 0)
+            return { w: Math.max(width(node.id, `600 13px ${sans}`) + (node.kind === "parallel" ? 90 : 40), rows), h: head, head, top: HEADER - 2 }
         }
         const sub = this.subtitle(node)
         const chips = this.chips(node).join("  ")
         const w = Math.max(width(node.id, `600 13px ${sans}`), sub ? width(sub, `11px ${mono}`) : 0, chips ? width(chips, `10px ${mono}`) + 16 : 0)
-        return { w: Math.ceil(w + 28), h: 30 + (sub ? 16 : 0) + (chips ? 16 : 0) }
+        const top = 28 + (sub ? 16 : 0) + (chips ? 16 : 0)
+        return { w: Math.max(Math.ceil(w + 28), rows), h: stack.length ? top + stack.length * ROW + 6 : top + 2, top }
+    }
+
+    /** A stack row's words: its condition, ⚡ when immediate, ✎ when it sets values. */
+    rowText(edge) {
+        return (edge.transition?.mode === "immediate" ? "⚡ " : "") + edgeLabel(edge) + (Object.keys(edge.transition?.set ?? {}).length ? " ✎" : "")
     }
 
     subtitle(node) {
@@ -182,15 +218,21 @@ export class GraphView {
     /** Lay the model out and draw it. ELK lays out in a worker, so the drawing (and the last `show`) follows later. */
     async setModel(model) {
         this.model = model
+        this.sizes = new Map()
         const token = (this.drawing = {})
         const box = this.container.getBoundingClientRect()
         const labelWidth = this.labelWidth = (edge) => {
             const context = (this.canvas ??= document.createElement("canvas")).getContext("2d")
             context.font = `10.5px ${getComputedStyle(this.container).getPropertyValue("--mono") || "monospace"}`
-            return edgeLabel(edge) ? context.measureText(edgeLabel(edge) + "  ✎⚡").width + 14 : 0
+            return edgeLabel(edge) && !stacked(edge) ? context.measureText(edgeLabel(edge) + "  ✎⚡").width + 14 : 0
         }
         const aspect = Math.min(2.4, Math.max(0.6, box.width / Math.max(1, box.height)))
-        const measure = (node) => this.measure(node)
+        const measure = (node) => {
+            if (!this.sizes.has(node.id)) {
+                this.sizes.set(node.id, this.measure(node))
+            }
+            return this.sizes.get(node.id)
+        }
         let layout
         try {
             layout = this.style === "curves" || this.style === "arcs" ? layoutGraph(model, measure, labelWidth, aspect, this.style === "arcs") : await layoutElk(model, measure, labelWidth, this.style, aspect)
@@ -202,6 +244,7 @@ export class GraphView {
             return
         }
         this.world.replaceChildren()
+        this.rows = new Map()
         this.nodeEls.clear()
         this.edgeEls.clear()
         this.timerEls.clear()
@@ -251,8 +294,12 @@ export class GraphView {
             svg("text", { x: cx, y: rect.y + 37, class: "final-label", "text-anchor": "middle" }, group).textContent = node.outcome
         } else if (node.kind === "compound" || node.kind === "parallel") {
             group.style.setProperty("--hue", HUES[this.hues.get(node.id)])
+            const head = this.sizes.get(node.id)?.head ?? HEADER
+            // the one outermost node is the whole drawing: no box around it, just its title and stack
+            const bare = node.id === this.model.root
+            group.classList.toggle("node-root", bare)
             svg("rect", { x: rect.x, y: rect.y, width: rect.w, height: rect.h, class: "box compound-box" }, group)
-            svg("rect", { x: rect.x, y: rect.y, width: rect.w, height: HEADER, class: "compound-head" }, group)
+            svg("rect", { x: rect.x, y: rect.y, width: rect.w, height: head, class: "compound-head" }, group)
             svg("text", { x: rect.x + 14, y: rect.y + 20, class: "node-name" }, group).textContent = node.id
             if (node.kind === "parallel") {
                 const tag = svg("g", { class: "parallel-tag" }, group)
@@ -267,7 +314,7 @@ export class GraphView {
                         svg("line", { x1: rect.x + 8, x2: rect.x + rect.w - 8, y1: y, y2: y, class: "region-split" }, group)
                     } else {
                         const x = (regions[i - 1].x + regions[i - 1].w + regions[i].x) / 2
-                        svg("line", { x1: x, x2: x, y1: rect.y + HEADER + 6, y2: rect.y + rect.h - 8, class: "region-split" }, group)
+                        svg("line", { x1: x, x2: x, y1: rect.y + head + 6, y2: rect.y + rect.h - 8, class: "region-split" }, group)
                     }
                 }
             }
@@ -288,6 +335,7 @@ export class GraphView {
             dot(rect.x + rect.w - 11, rect.y + 11, 4, "run-dot", group)
             svg("text", { x: rect.x + rect.w - 22, y: rect.y + 15, "text-anchor": "end", class: "outcome-mark" }, group)
         }
+        this.drawStack(group, node, rect)
         // a countdown under the node, on its own small backing so it reads over lines and container fills
         const timerBg = svg("rect", { class: "timer-bg", visibility: "hidden" }, group)
         const timer = svg("text", { x: rect.x + rect.w - 8, y: rect.y + rect.h + 13, "text-anchor": "end", class: "timer-text" }, group)
@@ -300,6 +348,74 @@ export class GraphView {
             this.handlers.onTap({ type: "node", id: node.id }, event)
         })
         this.nodeEls.set(node.id, group)
+    }
+
+    /** The node's outgoing conditions, one row each, right-aligned, each ending in the port its edge leaves from. */
+    drawStack(group, node, rect) {
+        const top = stackTop(this.sizes.get(node.id) ?? { h: 0 })
+        this.rows ??= new Map()
+        stackOf(this.model, node.id).forEach((edge, index) => {
+            const y = rect.y + top + index * ROW
+            const immediate = edge.transition?.mode === "immediate"
+            const row = svg("g", { class: `edge-label stack-row edge-label-${edge.kind}${immediate ? " edge-label-immediate" : ""}`, "data-id": edge.id }, group)
+            const background = svg("rect", { class: "edge-label-bg", y: y + 1, height: ROW - 2 }, row)
+            const text = svg("text", { x: rect.x + rect.w - 10, y: y + 13, "text-anchor": "end" }, row)
+            this.colorNames(text, this.rowText(edge))
+            const w = text.getComputedTextLength() || text.textContent.length * 6.4
+            background.setAttribute("x", rect.x + rect.w - w - 16)
+            background.setAttribute("width", w + 12)
+            dot(rect.x + rect.w, y + ROW / 2, 2.5, "stack-port", row)
+            row.addEventListener("pointerenter", (event) => {
+                event.stopPropagation()
+                this.edgeEls.get(edge.id)?.group.classList.add("hover")
+                this.handlers.onHover({ type: "edge", id: edge.id }, event)
+            })
+            row.addEventListener("pointerleave", () => {
+                this.edgeEls.get(edge.id)?.group.classList.remove("hover")
+                this.handlers.onLeave()
+            })
+            row.addEventListener("click", (event) => {
+                event.stopPropagation()
+                this.handlers.onTap({ type: "edge", id: edge.id }, event)
+            })
+            this.rows.set(edge.id, row)
+        })
+    }
+
+    /**
+     * A stacked edge's curve from its row's port: straight out to the right for LEAD, then in the edge style to its
+     * target (ELK's own route from where it put the port, or ours).
+     */
+    stackedPath(edge, to) {
+        const from = this.layout.rects.get(edge.from)
+        const port = portOf(this.model, edge, from, stackTop(this.sizes.get(edge.from)))
+        const lead = { x: port.x + LEAD, y: port.y }
+        if (edge.from === edge.to) {
+            // out of the row, then round over the node's top-right corner and down into it
+            const corner = { x: from.x + from.w + LEAD + 10, y: from.y - 16 }
+            const end = { x: from.x + from.w - 24, y: from.y - 3 }
+            return [[port, port, lead, lead], [lead, { x: lead.x + 12, y: lead.y }, { x: corner.x, y: corner.y + 10 }, corner], [corner, { x: corner.x - 10, y: corner.y - 8 }, { x: end.x, y: end.y - 14 }, end]]
+        }
+        const bends = this.layout.routes?.get(edge.id) ?? []
+        const vertical = this.style === "arcs" ? (this.layout.vertical.get(edge.id) ?? false) : null
+        const head = [port, port, lead, lead]
+        if (to.x <= lead.x + 8) {
+            // backward (or overlapping): down past both boxes, along under them, and up into the target's bottom;
+            // each row's edge gets its own lane so they don't sit on each other
+            const index = stackOf(this.model, edge.from).indexOf(edge)
+            const lane = Math.max(from.y + from.h, to.y + to.h) + 10 + index * 6
+            const x = Math.min(to.x + to.w - 14, Math.max(to.x + 14, to.x + to.w / 2 + index * 6))
+            const below = lane > to.y + to.h
+            return [head, ...roundedSegments([lead, { x: lead.x + index * 4, y: lead.y }, { x: lead.x + index * 4, y: lane }, { x, y: lane }, { x, y: below ? to.y + to.h + 3 : to.y - 3 }])]
+        }
+        if (vertical === false) {
+            return [head, ...edgeShape(this.model, { ...edge, from: `${edge.id}::lead` }, { ...lead, w: 0, h: 0 }, to, bends, () => 0, false)]
+        }
+        // forward: corners, rounded: across to a turn halfway, along to the target's height, and into its left side
+        const end = { x: to.x - 3, y: Math.min(to.y + to.h - 8, Math.max(to.y + 8, lead.y)) }
+        const turn = bends.length ? Math.min(...bends.map((bend) => bend.x)) : (lead.x + end.x) / 2
+        const mid = Math.max(lead.x + 6, Math.min(end.x - 6, turn))
+        return [head, ...roundedSegments([lead, { x: mid, y: lead.y }, { x: mid, y: end.y }, end])]
     }
 
     drawEdge(edgeLayer, labelLayer, edge) {
@@ -318,6 +434,11 @@ export class GraphView {
             const start = { x: box.x + 14 + context.measureText(edge.node).width / 2, y: box.y + HEADER + 2 }
             const end = boundaryPoint(to, start, 3)
             d = `M${start.x},${start.y} L${end.x.toFixed(1)},${end.y.toFixed(1)}`
+        } else if (stacked(edge) && !this.layout.paths) {
+            if (!to || !this.layout.rects.get(edge.from)) {
+                return
+            }
+            d = segmentsPath(this.stackedPath(edge, to))
         } else if (this.layout.paths) {
             const drawn = this.layout.paths.get(edge.id)
             if (!drawn?.d) {
@@ -356,8 +477,8 @@ export class GraphView {
                 path.style.strokeDasharray = `${length - 10} ${length}`
             }
         }
-        const label = edgeLabel(edge)
-        let labelGroup = null
+        const label = stacked(edge) ? "" : edgeLabel(edge)
+        let labelGroup = this.rows?.get(edge.id) ?? null
         if (label) {
             const mid = labelAt ?? path.getPointAtLength(path.getTotalLength() / 2)
             labelGroup = svg("g", { class: `edge-label edge-label-${edge.kind}${immediate ? " edge-label-immediate" : ""}`, "data-id": edge.id }, labelLayer)
@@ -376,7 +497,7 @@ export class GraphView {
                 labelGroup.insertBefore(svg("path", { d: tip, class: "edge-label-tip" }), text)
             }
         }
-        for (const element of [hit, labelGroup].filter(Boolean)) {
+        for (const element of [hit, stacked(edge) ? null : labelGroup].filter(Boolean)) {
             element.addEventListener("pointerenter", (event) => {
                 group.classList.add("hover")
                 this.handlers.onHover({ type: "edge", id: edge.id }, event)
@@ -583,6 +704,7 @@ export class GraphView {
 
     apply() {
         this.world.setAttribute("transform", `translate(${this.view.x},${this.view.y}) scale(${this.view.k})`)
+        this.root.style.setProperty("--title-scale", Math.min(3, Math.max(1, 0.9 / this.view.k)).toFixed(3))
     }
 
     fit() {

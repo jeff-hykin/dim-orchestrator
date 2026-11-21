@@ -86,11 +86,23 @@ function showTip(content, event, pinned = false) {
     tooltip.style.top = `${y}px`
 }
 
+// With a mouse a tip lasts while the pointer is on its node, edge or value, or on the tip itself, pinned or not;
+// on touch (no hover) a tapped tip stays until the next tap.
+let touched = false
+addEventListener("pointerdown", (event) => (touched = event.pointerType === "touch"), true)
 function hideTip() {
-    if (!app.pinned) {
-        tooltip.hidden = true
+    if (app.pinned && touched) {
+        return
     }
+    setTimeout(() => {
+        if (!tooltip.matches(":hover")) {
+            app.pinned = null
+            tooltip.hidden = true
+            graph.highlight()
+        }
+    }, 120)
 }
+tooltip.addEventListener("pointerleave", (event) => event.pointerType !== "touch" && hideTip())
 
 function detailsFor(target) {
     const step = shownStep()
@@ -162,6 +174,9 @@ document.addEventListener("pointerout", (event) => {
     if (event.target.closest?.(".pill[data-key]")) {
         pillTip?.remove()
         pillTip = null
+        if (app.pinned?.type === "value" && !event.relatedTarget?.closest?.("#tooltip")) {
+            hideTip()
+        }
     }
 })
 document.addEventListener("click", (event) => {

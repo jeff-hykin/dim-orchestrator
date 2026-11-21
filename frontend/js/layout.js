@@ -50,6 +50,8 @@ function layoutWith(model, measure, labelWidth, aspect, innerAspect, arcs) {
         }
         // a container's start is drawn as an arrow from its top-left corner, which needs a little room there
         const corner = node.def?.initial ? 12 : 0
+        // its header holds its title and the stack of its own transitions
+        const head = measure(node).head ?? HEADER
         const boxes = node.inside.filter((child) => model.nodes.get(child)?.kind !== "start").map((child) => ({ id: child, ...size(child) }))
         const links = []
         const linkEdges = []
@@ -104,19 +106,19 @@ function layoutWith(model, measure, labelWidth, aspect, innerAspect, arcs) {
         const misfit = (placement) => {
             const b = bounds(placement)
             const w = Math.max(1, b.x1 - b.x0) + PAD * 2
-            const h = Math.max(1, b.y1 - b.y0) + PAD * 2 + HEADER
+            const h = Math.max(1, b.y1 - b.y0) + PAD * 2 + head
             return id === model.root ? -Math.min(aspect / w, 1 / h) : Math.abs(Math.log(w / h / innerAspect))
         }
         const placement = misfit(down) < misfit(across) ? down : across
         let { x0: minX, y0: minY, x1: maxX, y1: maxY } = bounds(placement)
-        const shift = (point) => ({ x: point.x - minX + PAD + corner, y: point.y - minY + PAD + HEADER + corner })
+        const shift = (point) => ({ x: point.x - minX + PAD + corner, y: point.y - minY + PAD + head + corner })
         const place = new Map(boxes.map((box) => [box.id, shift(placement.positions.get(box.id))]))
         const routes = new Map()
         linkEdges.forEach((edgeId, index) => routes.set(edgeId, (placement.routes.get(index) ?? []).map(shift)))
         const measured = measure(node)
         const result = {
             w: Math.max(maxX - minX + PAD * 2 + corner, measured.w),
-            h: maxY - minY + PAD * 2 + HEADER + corner,
+            h: maxY - minY + PAD * 2 + head + corner,
         }
         local.set(id, { ...result, place, routes, vertical: placement === down })
         return result

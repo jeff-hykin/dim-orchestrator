@@ -4,6 +4,7 @@
 
 import { ELK } from "../vendor/elk/elk-api.js"
 import { HEADER, PAD } from "./layout.js"
+import { ROW, stacked, stackOf, stackTop } from "./stack.js"
 
 const elk = new ELK({ workerUrl: new URL("../vendor/elk/elk-worker.min.js", import.meta.url).href })
 
@@ -35,20 +36,33 @@ async function run(model, measure, labelWidth, style, direction) {
         const node = model.nodes.get(id)
         const inside = node.inside.filter(shown)
         const element = { id, layoutOptions: {}, edges: [] }
+        // a port on the right side at each row of its stack, where that row's edge leaves
+        const size = measure(node)
+        const stack = stackOf(model, id)
+        if (stack.length) {
+            element.layoutOptions["elk.portConstraints"] = "FIXED_POS"
+            element.ports = stack.map((edge, index) => ({
+                id: `${edge.id}::port`,
+                x: size.w,
+                y: stackTop(size) + index * ROW + ROW / 2,
+                width: 0,
+                height: 0,
+                layoutOptions: { "elk.port.side": "EAST" },
+            }))
+        }
         const parent = model.nodes.get(node.parent)
         if (parent?.def?.initial === id) {
             element.layoutOptions["elk.layered.layering.layerConstraint"] = "FIRST"
         }
         if (inside.length) {
-            const size = measure(node)
+            const head = size.head ?? HEADER
             element.children = inside.map(build)
             // room in the top-left corner for the arrow to the entry node
             const corner = node.def?.initial ? 12 : 0
-            element.layoutOptions["elk.padding"] = `[top=${HEADER + PAD + corner},left=${PAD + corner},bottom=${PAD},right=${PAD}]`
+            element.layoutOptions["elk.padding"] = `[top=${head + PAD + corner},left=${PAD + corner},bottom=${PAD},right=${PAD}]`
             element.layoutOptions["elk.nodeSize.constraints"] = "MINIMUM_SIZE"
-            element.layoutOptions["elk.nodeSize.minimum"] = `(${size.w}, ${HEADER + PAD})`
+            element.layoutOptions["elk.nodeSize.minimum"] = `(${size.w}, ${head + PAD})`
         } else {
-            const size = measure(node)
             element.width = size.w
             element.height = size.h
         }
@@ -65,7 +79,8 @@ async function run(model, measure, labelWidth, style, direction) {
         const toUp = new Set([edge.to, ...ancestors(edge.to)])
         const owner = fromUp.find((id) => toUp.has(id) && id !== edge.from && id !== edge.to) ?? parentOf(edge.from) ?? model.root
         const width = labelWidth(edge)
-        const elkEdge = { id: edge.id, sources: [edge.from], targets: [edge.to], labels: width > 14 ? [{ id: `${edge.id}::label`, text: edge.id, width, height: 18 }] : [] }
+        const source = stacked(edge) ? `${edge.id}::port` : edge.from
+        const elkEdge = { id: edge.id, sources: [source], targets: [edge.to], labels: width > 14 ? [{ id: `${edge.id}::label`, text: edge.id, width, height: 18 }] : [] }
         ;(elkNodes.get(owner) ?? root).edges.push(elkEdge)
     }
     root.layoutOptions = {
@@ -91,8 +106,12 @@ async function run(model, measure, labelWidth, style, direction) {
     const laid = await elk.layout(root)
     const rects = new Map()
     const paths = new Map()
+    const ports = new Map() // edge id -> where ELK put its port
     const walk = (element) => {
         rects.set(element.id, { x: element.x ?? 0, y: element.y ?? 0, w: element.width, h: element.height })
+        for (const port of element.ports ?? []) {
+            ports.set(port.id.replace(/::port$/, ""), { x: port.x, y: port.y })
+        }
         for (const edge of element.edges ?? []) {
             const label = edge.labels?.[0]
             paths.set(edge.id, {
@@ -105,7 +124,7 @@ async function run(model, measure, labelWidth, style, direction) {
         }
     }
     walk(laid)
-    return { rects, paths, width: laid.width, height: laid.height }
+    return { rects, paths, ports, width: laid.width, height: laid.height }
 }
 
 const f = (point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`
