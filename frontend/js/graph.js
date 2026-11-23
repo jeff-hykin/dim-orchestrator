@@ -333,11 +333,11 @@ export class GraphView {
             // the one outermost node is the whole drawing: no box around it, just its title and stack
             const bare = node.id === this.model.root
             group.classList.toggle("node-root", bare)
-            svg("rect", { x: rect.x, y: rect.y + TITLE, width: rect.w, height: rect.h - TITLE, class: "box compound-box" }, group)
+            svg("rect", { x: rect.x, y: rect.y, width: rect.w, height: rect.h, class: "box compound-box" }, group)
             if (head > TITLE) {
                 svg("rect", { x: rect.x, y: rect.y + TITLE, width: rect.w, height: head - TITLE, class: "compound-head" }, group)
             }
-            svg("text", { x: rect.x + 1, y: rect.y + TITLE - 6, class: "node-name", "font-size": size.font }, group).textContent = node.id
+            svg("text", { x: rect.x + (bare ? 1 : 8), y: rect.y + TITLE - 6, class: "node-name", "font-size": size.font }, group).textContent = node.id
             if (node.kind === "parallel") {
                 const tag = svg("g", { class: "parallel-tag" }, group)
                 const label = svg("text", { x: rect.x + rect.w - 4, y: rect.y + TITLE - 6, "text-anchor": "end", class: "tag-text" }, tag)
@@ -356,8 +356,8 @@ export class GraphView {
                 }
             }
         } else {
-            svg("rect", { x: rect.x, y: rect.y + TITLE, width: rect.w, height: rect.h - TITLE, class: "box leaf-box" }, group)
-            svg("text", { x: rect.x + 1, y: rect.y + TITLE - 6, class: "node-name", "font-size": size.font }, group).textContent = node.id
+            svg("rect", { x: rect.x, y: rect.y, width: rect.w, height: rect.h, class: "box leaf-box" }, group)
+            svg("text", { x: rect.x + 10, y: rect.y + TITLE - 6, class: "node-name", "font-size": size.font }, group).textContent = node.id
             let y = rect.y + TITLE + 2
             const sub = this.subtitle(node)
             if (sub) {
@@ -372,7 +372,17 @@ export class GraphView {
             dot(rect.x + rect.w - 6, rect.y + TITLE - 6 - size.font / 3, 4, "run-dot", group)
             svg("text", { x: rect.x + rect.w - 16, y: rect.y + TITLE - 6, "text-anchor": "end", class: "outcome-mark" }, group)
         }
-        this.drawStack(group, node, rect)
+        // shown while the node is hovered, over every edge: its name above its box, and its conditions
+        const overlay = svg("g", { class: "node-conditions" }, this.conditionLayer)
+        overlay.style.setProperty("--hue", group.style.getPropertyValue("--hue"))
+        group.addEventListener("pointerenter", () => overlay.classList.add("shown"))
+        group.addEventListener("pointerleave", () => overlay.classList.remove("shown"))
+        if (node.kind !== "final" && node.id !== this.model.root) {
+            const name = svg("g", { class: `name-float name-float-${node.kind}` }, overlay)
+            svg("rect", { class: "name-float-bg", x: rect.x, y: rect.y - TITLE - 2, width: (size.titleW ?? 0) + 16, height: TITLE }, name)
+            svg("text", { x: rect.x + 8, y: rect.y - 9, class: "node-name", "font-size": size.font }, name).textContent = node.id
+        }
+        this.drawStack(group, node, rect, overlay)
         // a countdown under the node, on its own small backing so it reads over lines and container fills
         const timerBg = svg("rect", { class: "timer-bg", visibility: "hidden" }, group)
         const timer = svg("text", { x: rect.x + rect.w - 8, y: rect.y + rect.h + 13, "text-anchor": "end", class: "timer-text" }, group)
@@ -388,21 +398,16 @@ export class GraphView {
     }
 
     /** The node's outgoing conditions, one row each, right-aligned, each ending in the port its edge leaves from. */
-    drawStack(group, node, rect) {
+    drawStack(group, node, rect, overlay) {
         const top = stackTop(this.sizes.get(node.id) ?? { h: 0 })
         this.rows ??= new Map()
-        const overlay = svg("g", { class: "node-conditions" }, this.conditionLayer)
-        group.addEventListener("pointerenter", () => overlay.classList.add("shown"))
-        group.addEventListener("pointerleave", () => overlay.classList.remove("shown"))
         stackOf(this.model, node.id).forEach((edge, index) => {
             const y = rect.y + top + index * ROW
             const immediate = edge.transition?.mode === "immediate"
             const row = svg("g", { class: `edge-label stack-row edge-label-${edge.kind}${immediate ? " edge-label-immediate" : ""}`, "data-id": edge.id }, group)
             svg("rect", { class: "edge-label-bg", x: rect.x, y, width: rect.w, height: ROW }, row)
-            // a line across the box above each row, except where the row starts the box
-            if (y > rect.y + (this.sizes.get(node.id)?.title ?? 0) + 1) {
-                svg("line", { class: "stack-divider", x1: rect.x, x2: rect.x + rect.w, y1: y, y2: y }, row)
-            }
+            // a line across the box above each row, under the name
+            svg("line", { class: "stack-divider", x1: rect.x, x2: rect.x + rect.w, y1: y, y2: y }, row)
             // its words, shown while the node is hovered, over the edges: whole, running out past the box when long
             const words = svg("g", { class: `edge-label row-words edge-label-${edge.kind}${immediate ? " edge-label-immediate" : ""}` }, overlay)
             const bg = svg("rect", { class: "row-words-bg", y, height: ROW }, words)
@@ -487,20 +492,14 @@ export class GraphView {
             return found
         }
         const outside = new Set([...ancestors(edge.from), ...ancestors(edge.to)])
-        // a node's name and box (a final marker is all one shape); a node holding an end counts only by its header
+        // a node's whole box; a node holding an end counts only by its header (its name and conditions)
         const shapes = (id) => {
             const rect = rects.get(id)
             const size = this.sizes.get(id)
             if (!rect || !size?.titleW) {
                 return rect ? [rect] : []
             }
-            const TITLE = size.title
-            const name = { x: rect.x, y: rect.y + 2, w: size.titleW + 6, h: TITLE - 2 }
-            if (outside.has(id)) {
-                const head = size.head ?? TITLE
-                return head > TITLE ? [name, { x: rect.x, y: rect.y + TITLE, w: rect.w, h: head - TITLE }] : [name]
-            }
-            return [name, { x: rect.x, y: rect.y + TITLE, w: rect.w, h: rect.h - TITLE }]
+            return outside.has(id) ? [{ x: rect.x, y: rect.y, w: rect.w, h: size.head ?? size.title }] : [rect]
         }
         const obstacles = [...this.model.nodes.values()].filter((node) => node.kind !== "start").flatMap((node) => shapes(node.id))
         // the innermost node holding both ends (not one of the ends), and the room inside its box
@@ -514,7 +513,7 @@ export class GraphView {
         // where it may arrive: the left side at its own height, the top right of the name, the bottom, the right side
         const to = rects.get(edge.to)
         const toSize = this.sizes.get(edge.to)
-        const box = toSize?.title ? { x: to.x, y: to.y + toSize.title, w: to.w, h: to.h - toSize.title } : to
+        const box = to
         const gap = 13
         const clamp = (value, low, high) => Math.min(high, Math.max(low, value))
         const goals = []
@@ -548,10 +547,7 @@ export class GraphView {
                 skip.add(at)
             }
         }
-        const boxes = [...this.layout.rects].filter(([id]) => !skip.has(id)).map(([id, rect]) => {
-            const title = this.sizes.get(id)?.title ?? 0
-            return { x: rect.x, y: rect.y + title, w: rect.w, h: rect.h - title }
-        })
+        const boxes = [...this.layout.rects].filter(([id]) => !skip.has(id)).map(([, rect]) => rect)
         const length = path.getTotalLength()
         for (let along = 0; along <= length; along += 3) {
             const p = path.getPointAtLength(along)
@@ -575,8 +571,7 @@ export class GraphView {
             }
             // from the top-left corner of its inside, under its header
             const start = { x: box.x + 6, y: box.y + (this.sizes.get(edge.node)?.head ?? 0) + 6 }
-            const title = this.sizes.get(edge.to)?.title ?? 0
-            const end = boundaryPoint({ ...to, y: to.y + title, h: to.h - title }, start, 3)
+            const end = boundaryPoint(to, start, 3)
             d = `M${start.x},${start.y} L${end.x.toFixed(1)},${end.y.toFixed(1)}`
         } else if (stacked(edge) && !this.layout.paths) {
             if (!to || !this.layout.rects.get(edge.from)) {

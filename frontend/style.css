@@ -1983,3 +1983,27 @@ span.bb-link {
 .node:hover .stack-divider {
     opacity: 1;
 }
+
+/* a node's name sits inside its box; hovered, it shows above the box instead, over the edges */
+.name-float {
+    opacity: 0;
+    transition: opacity 0.12s;
+}
+
+.name-float-bg {
+    fill: var(--raised);
+    stroke: var(--border-strong);
+}
+
+.name-float-compound .node-name,
+.name-float-parallel .node-name {
+    fill: color-mix(in srgb, var(--hue, var(--fg)) 70%, var(--fg));
+}
+
+.node-conditions.shown .name-float {
+    opacity: 1;
+}
+
+.node:not(.node-root):hover > .node-name {
+    opacity: 0;
+}
