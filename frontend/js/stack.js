@@ -1,5 +1,5 @@
-// A node's outgoing conditions, stacked one row each under its title (in its header, for a node with children) and
-// right-aligned to its right side. Each edge leaves its node from the right end of its own row.
+// A node's outgoing conditions, stacked one row each in its box (in its header, for a node with children), each row
+// across the whole box with a line above it. Each edge leaves its node from the right end of its own row.
 
 export const ROW = 18
 // how far an edge runs straight out of its row before it turns

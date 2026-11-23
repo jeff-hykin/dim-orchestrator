@@ -275,7 +275,6 @@ svg.graph:active {
 
 .node-name {
     fill: var(--fg);
-    font-size: 13px;
     font-weight: 600;
     font-family: var(--sans);
 }
@@ -1929,8 +1928,19 @@ span.bb-link {
 /* ---------------------------------------------------------------- condition stacks */
 /* a stack row is solid (it sits inside its node), and its port is where its edge starts */
 .stack-row .edge-label-bg {
-    fill-opacity: 0.85;
-    stroke-dasharray: none;
+    rx: 0;
+    fill-opacity: 0;
+    stroke: none;
+}
+
+.stack-row:hover .edge-label-bg,
+.stack-row.picked .edge-label-bg {
+    fill-opacity: 0.7;
+}
+
+.stack-divider {
+    stroke: var(--border-strong);
+    stroke-width: 1;
 }
 
 .stack-port {
@@ -1943,13 +1953,10 @@ span.bb-link {
     display: none;
 }
 
-/* titles keep a readable size on screen when zoomed out (--title-scale is 1 / zoom, at least 1, at most 3) */
+/* a name above its box: a halo in the page's color so a line passing behind it never cuts through it */
 .node-name {
-    transform-box: fill-box;
-    transform-origin: left bottom;
-    transform: scale(var(--title-scale, 1));
     paint-order: stroke;
     stroke: var(--bg);
-    stroke-width: calc(3px / var(--title-scale, 1));
-    stroke-opacity: calc(min(1, (var(--title-scale, 1) - 1) * 2));
+    stroke-width: 3px;
+    stroke-linejoin: round;
 }
