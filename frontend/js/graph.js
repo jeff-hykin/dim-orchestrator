@@ -104,7 +104,7 @@ const FIRE_BACKLOG = 8
 const short = (text, length = 34) => (text.length > length ? `${text.slice(0, length - 1)}…` : text)
 
 /** The words an edge's label carries. */
-export function edgeLabel(edge) {
+export function edgeLabel(edge, length = 34) {
     if (edge.kind === "initial") {
         return ""
     }
@@ -125,7 +125,7 @@ export function edgeLabel(edge) {
     if (!parts.length) {
         parts.push("always")
     }
-    return short(parts.join(" "))
+    return short(parts.join(" "), length)
 }
 
 export class GraphView {
@@ -194,8 +194,22 @@ export class GraphView {
     }
 
     /** A stack row's words: its condition, ⚡ when immediate, ✎ when it sets values. */
-    rowText(edge) {
-        return (edge.transition?.mode === "immediate" ? "⚡ " : "") + edgeLabel(edge) + (Object.keys(edge.transition?.set ?? {}).length ? " ✎" : "")
+    rowText(edge, length) {
+        return (edge.transition?.mode === "immediate" ? "⚡ " : "") + edgeLabel(edge, length) + (Object.keys(edge.transition?.set ?? {}).length ? " ✎" : "")
+    }
+
+    /** A row's words cut to fit `room` pixels: the whole condition when it fits, else as many characters as do. */
+    rowTextFitting(edge, room) {
+        const context = (this.canvas ??= document.createElement("canvas")).getContext("2d")
+        context.font = `10.5px ${getComputedStyle(this.container).getPropertyValue("--mono") || "monospace"}`
+        const full = this.rowText(edge, Infinity)
+        let length = full.length + 1
+        let text = full
+        while (length > 4 && context.measureText(text).width > room) {
+            length--
+            text = this.rowText(edge, length)
+        }
+        return text
     }
 
     subtitle(node) {
@@ -385,7 +399,7 @@ export class GraphView {
                 svg("line", { class: "stack-divider", x1: rect.x, x2: rect.x + rect.w, y1: y, y2: y }, row)
             }
             const text = svg("text", { x: rect.x + rect.w - 10, y: y + 13, "text-anchor": "end" }, row)
-            this.colorNames(text, this.rowText(edge))
+            this.colorNames(text, this.rowTextFitting(edge, rect.w - 20))
             dot(rect.x + rect.w, y + ROW / 2, 2.5, "stack-port", row)
             row.addEventListener("pointerenter", (event) => {
                 event.stopPropagation()

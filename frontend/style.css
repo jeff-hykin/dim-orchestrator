@@ -1960,3 +1960,14 @@ span.bb-link {
     stroke-width: 3px;
     stroke-linejoin: round;
 }
+
+/* a node's conditions show only while it is hovered (or one of its rows is picked) */
+.stack-row text {
+    opacity: 0;
+    transition: opacity 0.12s;
+}
+
+.node:hover .stack-row text,
+.stack-row.picked text {
+    opacity: 1;
+}
