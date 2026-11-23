@@ -423,7 +423,7 @@ svg.graph:active {
 /* edges */
 .edge-line {
     fill: none;
-    stroke: var(--muted-fg);
+    stroke: var(--edge-color, var(--muted-fg));
     stroke-opacity: 0.75;
     stroke-width: 1.5;
     transition: stroke 0.4s, stroke-width 0.4s;
@@ -453,7 +453,7 @@ svg.graph:active {
 }
 
 .arrow-head {
-    fill: var(--muted-fg);
+    fill: var(--edge-color, var(--muted-fg));
     fill-opacity: 0.9;
     transition: fill 0.4s;
 }
@@ -1944,7 +1944,7 @@ span.bb-link {
 }
 
 .stack-port {
-    fill: var(--muted-fg);
+    fill: var(--edge-color, var(--muted-fg));
 }
 
 /* the one outermost node is the whole drawing: no wash, border or header band */

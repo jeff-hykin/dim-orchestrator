@@ -50,6 +50,18 @@ function roundedSegments(points) {
     return segments
 }
 
+// transition edges each take the next of these, so edges running side by side can be told apart (theme colors only)
+const EDGE_COLORS = [
+    "color-mix(in oklch, var(--info) 85%, var(--fg))",
+    "color-mix(in oklch, var(--ok) 85%, var(--fg))",
+    "color-mix(in oklch, var(--accent-alt) 80%, var(--fg))",
+    "color-mix(in oklch, var(--warn) 55%, var(--ok))",
+    "color-mix(in oklch, var(--danger) 45%, var(--accent-alt))",
+    "color-mix(in oklch, var(--info) 50%, var(--ok))",
+    "color-mix(in oklch, var(--warn) 75%, var(--fg))",
+    "color-mix(in oklch, var(--info) 50%, var(--accent-alt))",
+]
+
 const HUES = [
     "color-mix(in oklch, var(--info) 55%, var(--ok))",
     "color-mix(in oklch, var(--accent-alt) 55%, var(--danger))",
@@ -280,6 +292,7 @@ export class GraphView {
         this.timerEls.clear()
         this.layout = layout
         this.used = null
+        this.colored = 0
         const nodeLayer = svg("g", { class: "nodes" }, this.world)
         const edgeLayer = svg("g", { class: "edges" }, this.world)
         const labelLayer = svg("g", { class: "labels" }, this.world)
@@ -593,6 +606,12 @@ export class GraphView {
         const immediate = edge.transition?.mode === "immediate"
         const cls = ["edge", `edge-${edge.kind}`, immediate ? "edge-immediate" : ""].join(" ")
         const group = svg("g", { class: cls, "data-id": edge.id }, edgeLayer)
+        if (edge.kind === "transition" && !immediate) {
+            // its own color, shared with its row's port so the two read as one
+            const color = EDGE_COLORS[this.colored++ % EDGE_COLORS.length]
+            group.style.setProperty("--edge-color", color)
+            this.rows?.get(edge.id)?.style.setProperty("--edge-color", color)
+        }
         const path = svg("path", { d, class: "edge-line" }, group)
         const hit = svg("path", { d, class: "edge-hit" }, group)
         if (this.style !== "curves" && edge.kind !== "initial" && stacked(edge) && this.crossesNode(edge, path)) {
