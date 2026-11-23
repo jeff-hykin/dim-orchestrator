@@ -1963,14 +1963,25 @@ span.bb-link {
     stroke-linejoin: round;
 }
 
-/* a node's conditions (and the lines between them) show only while it is hovered (or one of its rows is picked) */
-.stack-row text {
+/* a node's conditions sit in its box, cut to fit; hovered, a cut one shows whole (running out past the box), and the
+   lines between them show */
+.row-full {
     opacity: 0;
-    transition: opacity 0.12s;
+    pointer-events: none;
 }
 
-.node:hover .stack-row text,
-.node:hover .stack-divider,
-.stack-row.picked text {
+.row-full-bg {
+    fill: var(--raised);
+    stroke: var(--border-strong);
+}
+
+.node:hover .row-cut .row-fit,
+.row-cut.picked .row-fit {
+    opacity: 0;
+}
+
+.node:hover .row-full,
+.stack-row.picked .row-full,
+.node:hover .stack-divider {
     opacity: 1;
 }

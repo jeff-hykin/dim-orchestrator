@@ -411,8 +411,20 @@ export class GraphView {
             if (y > rect.y + (this.sizes.get(node.id)?.title ?? 0) + 1) {
                 svg("line", { class: "stack-divider", x1: rect.x, x2: rect.x + rect.w, y1: y, y2: y }, row)
             }
-            const text = svg("text", { x: rect.x + rect.w - 10, y: y + 13, "text-anchor": "end" }, row)
-            this.colorNames(text, this.rowTextFitting(edge, rect.w - 20))
+            // what fits in the box; when that cuts it short, the whole condition on hover, running out past the box
+            const fitting = this.rowTextFitting(edge, rect.w - 20)
+            this.colorNames(svg("text", { class: "row-fit", x: rect.x + rect.w - 10, y: y + 13, "text-anchor": "end" }, row), fitting)
+            const whole = this.rowText(edge, Infinity)
+            if (fitting !== whole) {
+                row.classList.add("row-cut")
+                const full = svg("g", { class: "row-full" }, row)
+                const bg = svg("rect", { class: "row-full-bg", y, height: ROW }, full)
+                const text = svg("text", { x: rect.x + rect.w - 10, y: y + 13, "text-anchor": "end" }, full)
+                this.colorNames(text, whole)
+                const length = text.getComputedTextLength()
+                bg.setAttribute("x", rect.x + rect.w - length - 18)
+                bg.setAttribute("width", length + 18)
+            }
             dot(rect.x + rect.w, y + ROW / 2, 2.5, "stack-port", row)
             row.addEventListener("pointerenter", (event) => {
                 event.stopPropagation()
