@@ -1941,8 +1941,6 @@ span.bb-link {
 .stack-divider {
     stroke: var(--border-strong);
     stroke-width: 1;
-    opacity: 0;
-    transition: opacity 0.12s;
 }
 
 .stack-port {
@@ -1963,25 +1961,25 @@ span.bb-link {
     stroke-linejoin: round;
 }
 
-/* a node's conditions sit in its box, cut to fit; hovered, a cut one shows whole (running out past the box), and the
-   lines between them show */
-.row-full {
+/* a node's conditions, and the lines between them, show only while it is hovered: each one whole, over the edges,
+   running out past the box when it doesn't fit */
+.row-words,
+.stack-divider {
     opacity: 0;
+    transition: opacity 0.12s;
+}
+
+.conditions {
     pointer-events: none;
 }
 
-.row-full-bg {
+.row-words-bg {
     fill: var(--raised);
     stroke: var(--border-strong);
 }
 
-.node:hover .row-cut .row-fit,
-.row-cut.picked .row-fit {
-    opacity: 0;
-}
-
-.node:hover .row-full,
-.stack-row.picked .row-full,
+.node-conditions.shown .row-words,
+.row-words.picked,
 .node:hover .stack-divider {
     opacity: 1;
 }

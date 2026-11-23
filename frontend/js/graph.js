@@ -210,20 +210,6 @@ export class GraphView {
         return (edge.transition?.mode === "immediate" ? "⚡ " : "") + edgeLabel(edge, length) + (Object.keys(edge.transition?.set ?? {}).length ? " ✎" : "")
     }
 
-    /** A row's words cut to fit `room` pixels: the whole condition when it fits, else as many characters as do. */
-    rowTextFitting(edge, room) {
-        const context = (this.canvas ??= document.createElement("canvas")).getContext("2d")
-        context.font = `10.5px ${getComputedStyle(this.container).getPropertyValue("--mono") || "monospace"}`
-        const full = this.rowText(edge, Infinity)
-        let length = full.length + 1
-        let text = full
-        while (length > 4 && context.measureText(text).width > room) {
-            length--
-            text = this.rowText(edge, length)
-        }
-        return text
-    }
-
     subtitle(node) {
         const activity = node.def?.activity ? this.model.activities.get(node.def.activity) : null
         return activity ? activity.start : ""
@@ -296,6 +282,9 @@ export class GraphView {
         const nodeLayer = svg("g", { class: "nodes" }, this.world)
         const edgeLayer = svg("g", { class: "edges" }, this.world)
         const labelLayer = svg("g", { class: "labels" }, this.world)
+        // a hovered node's conditions, over every edge and label
+        this.conditionLayer = svg("g", { class: "conditions" }, this.world)
+        this.conditionEls = new Map()
         // outermost first, so inner nodes are drawn over their parents
         const depth = (id) => {
             let n = 0
@@ -402,6 +391,9 @@ export class GraphView {
     drawStack(group, node, rect) {
         const top = stackTop(this.sizes.get(node.id) ?? { h: 0 })
         this.rows ??= new Map()
+        const overlay = svg("g", { class: "node-conditions" }, this.conditionLayer)
+        group.addEventListener("pointerenter", () => overlay.classList.add("shown"))
+        group.addEventListener("pointerleave", () => overlay.classList.remove("shown"))
         stackOf(this.model, node.id).forEach((edge, index) => {
             const y = rect.y + top + index * ROW
             const immediate = edge.transition?.mode === "immediate"
@@ -411,20 +403,15 @@ export class GraphView {
             if (y > rect.y + (this.sizes.get(node.id)?.title ?? 0) + 1) {
                 svg("line", { class: "stack-divider", x1: rect.x, x2: rect.x + rect.w, y1: y, y2: y }, row)
             }
-            // what fits in the box; when that cuts it short, the whole condition on hover, running out past the box
-            const fitting = this.rowTextFitting(edge, rect.w - 20)
-            this.colorNames(svg("text", { class: "row-fit", x: rect.x + rect.w - 10, y: y + 13, "text-anchor": "end" }, row), fitting)
-            const whole = this.rowText(edge, Infinity)
-            if (fitting !== whole) {
-                row.classList.add("row-cut")
-                const full = svg("g", { class: "row-full" }, row)
-                const bg = svg("rect", { class: "row-full-bg", y, height: ROW }, full)
-                const text = svg("text", { x: rect.x + rect.w - 10, y: y + 13, "text-anchor": "end" }, full)
-                this.colorNames(text, whole)
-                const length = text.getComputedTextLength()
-                bg.setAttribute("x", rect.x + rect.w - length - 18)
-                bg.setAttribute("width", length + 18)
-            }
+            // its words, shown while the node is hovered, over the edges: whole, running out past the box when long
+            const words = svg("g", { class: `edge-label row-words edge-label-${edge.kind}${immediate ? " edge-label-immediate" : ""}` }, overlay)
+            const bg = svg("rect", { class: "row-words-bg", y, height: ROW }, words)
+            const text = svg("text", { x: rect.x + rect.w - 10, y: y + 13, "text-anchor": "end" }, words)
+            this.colorNames(text, this.rowText(edge, Infinity))
+            const length = text.getComputedTextLength()
+            bg.setAttribute("x", Math.min(rect.x, rect.x + rect.w - length - 18))
+            bg.setAttribute("width", Math.max(rect.w, length + 18))
+            this.conditionEls.set(edge.id, words)
             dot(rect.x + rect.w, y + ROW / 2, 2.5, "stack-port", row)
             row.addEventListener("pointerenter", (event) => {
                 event.stopPropagation()
@@ -869,6 +856,7 @@ export class GraphView {
         for (const [id, edge] of this.edgeEls) {
             edge.group.classList.toggle("picked", edges.has(id))
             edge.label?.classList.toggle("picked", edges.has(id))
+            this.conditionEls.get(id)?.classList.toggle("picked", edges.has(id))
         }
         for (const [id, element] of this.nodeEls) {
             element.classList.toggle("picked", nodes.has(id))
