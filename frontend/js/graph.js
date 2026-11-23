@@ -514,6 +514,28 @@ export class GraphView {
         return [lead, ...corners.slice(1), { x: goal.end.x ?? last.x, y: goal.end.y ?? last.y }]
     }
 
+    /** Whether a drawn edge runs through the box of a node it neither starts in, ends in, nor sits inside. */
+    crossesNode(edge, path) {
+        const skip = new Set([edge.from, edge.to])
+        for (const id of [edge.from, edge.to]) {
+            for (let at = this.model.nodes.get(id)?.parent; at != null; at = this.model.nodes.get(at)?.parent) {
+                skip.add(at)
+            }
+        }
+        const boxes = [...this.layout.rects].filter(([id]) => !skip.has(id)).map(([id, rect]) => {
+            const title = this.sizes.get(id)?.title ?? 0
+            return { x: rect.x, y: rect.y + title, w: rect.w, h: rect.h - title }
+        })
+        const length = path.getTotalLength()
+        for (let along = 0; along <= length; along += 3) {
+            const p = path.getPointAtLength(along)
+            if (boxes.some((box) => p.x > box.x + 2 && p.x < box.x + box.w - 2 && p.y > box.y + 2 && p.y < box.y + box.h - 2)) {
+                return true
+            }
+        }
+        return false
+    }
+
     drawEdge(edgeLayer, labelLayer, edge) {
         const to = this.layout.rects.get(edge.to)
         let d
@@ -559,6 +581,17 @@ export class GraphView {
         const group = svg("g", { class: cls, "data-id": edge.id }, edgeLayer)
         const path = svg("path", { d, class: "edge-line" }, group)
         const hit = svg("path", { d, class: "edge-hit" }, group)
+        if (this.style !== "curves" && edge.kind !== "initial" && stacked(edge) && this.crossesNode(edge, path)) {
+            // an arc or spline that would run over a node takes the routed way around instead
+            const start = path.getPointAtLength(0)
+            const lead = { x: start.x + LEAD, y: start.y }
+            const corners = this.routeAround(edge, lead)
+            if (corners) {
+                d = segmentsPath([[start, start, lead, lead], ...roundedSegments(corners)])
+                path.setAttribute("d", d)
+                hit.setAttribute("d", d)
+            }
+        }
         // The arrowhead is its own triangle: its tip on the curve's end, its base 10px back along the curve, and the
         // line stopping at the middle of that base, so the line always meets the head square-on.
         const length = path.getTotalLength()
