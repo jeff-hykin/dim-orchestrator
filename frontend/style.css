@@ -1285,7 +1285,7 @@ span.bb-link {
     --kind-streams: var(--accent-alt);
     --kind-vars: var(--cat-2, var(--ok));
     --kind-results: var(--cat-3, var(--info));
-    --kind-constants: var(--muted-fg);
+    --kind-constants: var(--fg);
 }
 
 .bb-streams {
