@@ -536,7 +536,7 @@ export class GraphView {
             return Array.from({ length: count + 1 }, (_, i) => low + ((high - low) * i) / count)
         }
         this.used ??= { h: new Map(), v: new Map(), ends: [] }
-        const taken = (end) => (this.used.ends.some((other) => Math.hypot(other.x - end.x, other.y - end.y) < 10) ? 150 : 0)
+        const taken = (end) => (this.used.ends.some((other) => Math.hypot(other.x - end.x, other.y - end.y) < 10) ? 400 : 0)
         const offer = (goal) => goals.push({ ...goal, cost: goal.cost + taken({ x: goal.end.x ?? goal.x, y: goal.end.y ?? goal.y }) })
         if (!self) {
             for (const y of along(box.y + 8, box.y + box.h - 8, 14)) {
