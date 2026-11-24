@@ -338,6 +338,7 @@ export class GraphView {
         this.layout = layout
         this.used = null
         this.colored = 0
+        this.overlays = new Map()
         const nodeLayer = svg("g", { class: "nodes" }, this.world)
         // edges go behind nodes: each one just over the innermost container holding both its ends, under that container's children
         const edgeLayers = new Map([[null, svg("g", { class: "edges" }, nodeLayer)]])
@@ -393,6 +394,7 @@ export class GraphView {
             this.drawEdge(edgeLayerOf(edge), labelLayer, edge)
         }
         this.hovered = null
+        this.pinned = null
         this.applyOpen()
         this.userMoved = false
         this.fit()
@@ -465,9 +467,10 @@ export class GraphView {
             this.hover(node.id)
         })
         group.addEventListener("pointerleave", () => {
-            overlay.classList.remove("shown")
+            overlay.classList.toggle("shown", this.pinned === node.id)
             this.hover(null)
         })
+        this.overlays.set(node.id, overlay)
         this.drawStack(group, node, rect, overlay)
         // a countdown under the node, on its own small backing so it reads over lines and container fills
         const timerBg = svg("rect", { class: "timer-bg", visibility: "hidden" }, group)
@@ -478,6 +481,8 @@ export class GraphView {
         group.addEventListener("pointerleave", () => this.handlers.onLeave())
         group.addEventListener("click", (event) => {
             event.stopPropagation()
+            // clicking a node keeps it as if hovered (again lets it go)
+            this.pin(this.pinned === node.id ? null : node.id)
             this.handlers.onTap({ type: "node", id: node.id }, event)
         })
         this.nodeEls.set(node.id, group)
@@ -487,6 +492,7 @@ export class GraphView {
     drawStack(group, node, rect, overlay) {
         const top = stackTop(this.sizes.get(node.id) ?? { h: 0 })
         this.rows ??= new Map()
+        const backs = []
         stackOf(this.model, node.id).forEach((edge, index) => {
             const y = rect.y + top + index * ROW
             const immediate = edge.transition?.mode === "immediate"
@@ -499,9 +505,7 @@ export class GraphView {
             const bg = svg("rect", { class: "row-words-bg", y, height: ROW }, words)
             const text = svg("text", { x: rect.x + rect.w - 10, y: y + 13, "text-anchor": "end" }, words)
             this.colorNames(text, this.rowText(edge, Infinity))
-            const length = text.getComputedTextLength()
-            bg.setAttribute("x", Math.min(rect.x, rect.x + rect.w - length - 18))
-            bg.setAttribute("width", Math.max(rect.w, length + 18))
+            backs.push({ bg, width: text.getComputedTextLength() + 18 })
             this.conditionEls.set(edge.id, words)
             dot(rect.x + rect.w, y + ROW / 2, 2.5, "stack-port", row)
             row.addEventListener("pointerenter", (event) => {
@@ -519,6 +523,12 @@ export class GraphView {
             })
             this.rows.set(edge.id, row)
         })
+        // one box for them all, as wide as the longest (running out past the node's left side when it doesn't fit)
+        const width = Math.max(rect.w, ...backs.map((back) => back.width))
+        for (const { bg } of backs) {
+            bg.setAttribute("x", rect.x + rect.w - width)
+            bg.setAttribute("width", width)
+        }
     }
 
     /**
@@ -749,6 +759,14 @@ export class GraphView {
         this.openFrame = requestAnimationFrame(() => this.applyOpen())
     }
 
+    /** The clicked node (or null): it stays open, its conditions shown and its edges in focus, as if hovered. */
+    pin(id) {
+        this.overlays.get(this.pinned)?.classList.remove("shown")
+        this.pinned = id
+        this.overlays.get(id)?.classList.add("shown")
+        this.hover(this.hovered)
+    }
+
     /**
      * Nodes are closed (just their name in the middle; a container's inside hidden) except the hovered one, the ones
      * around it, and the outermost. An edge hides when both its ends are hidden.
@@ -759,8 +777,11 @@ export class GraphView {
         if (new URLSearchParams(location.search).has("expand")) {
             this.model.nodes.forEach((_, id) => open.add(id))
         }
-        for (let at = this.hovered; at != null; at = this.model.nodes.get(at)?.parent) {
-            open.add(at)
+        const focus = this.hovered ?? this.pinned
+        for (const start of [this.hovered, this.pinned]) {
+            for (let at = start; at != null; at = this.model.nodes.get(at)?.parent) {
+                open.add(at)
+            }
         }
         const hidden = (id) => {
             for (let at = this.model.nodes.get(id)?.parent; at != null; at = this.model.nodes.get(at)?.parent) {
@@ -775,11 +796,27 @@ export class GraphView {
             element.classList.toggle("closed", node?.kind !== "final" && !open.has(id))
             element.classList.toggle("tucked", hidden(id))
         }
+        // the focused node's own edges (and those inside it, and its parents') keep their colors; the rest go grey
+        const within = (id) => {
+            for (let at = id; at != null; at = this.model.nodes.get(at)?.parent) {
+                if (at === focus) {
+                    return true
+                }
+            }
+            return false
+        }
+        const ancestors = new Set()
+        for (let at = this.model.nodes.get(focus)?.parent; at != null; at = this.model.nodes.get(at)?.parent) {
+            ancestors.add(at)
+        }
         for (const edge of this.model.edges) {
             const element = this.edgeEls.get(edge.id)
             const tucked = edge.kind === "initial" ? hidden(edge.to) : hidden(edge.from) && hidden(edge.to)
             element?.group.classList.toggle("tucked", tucked)
             element?.label?.classList.toggle("tucked", tucked)
+            const muted = focus != null && !within(edge.from) && !within(edge.to) && !ancestors.has(edge.from)
+            element?.group.classList.toggle("muted", muted)
+            this.rows?.get(edge.id)?.classList.toggle("muted", muted)
         }
     }
 
@@ -857,8 +894,8 @@ export class GraphView {
         if (edge.kind === "transition" && !immediate) {
             // its own color, shared with its row's port so the two read as one
             const color = EDGE_COLORS[this.colored++ % EDGE_COLORS.length]
-            group.style.setProperty("--edge-color", color)
-            this.rows?.get(edge.id)?.style.setProperty("--edge-color", color)
+            group.style.setProperty("--own-color", color)
+            this.rows?.get(edge.id)?.style.setProperty("--own-color", color)
         }
         const path = svg("path", { d, class: "edge-line" }, group)
         const hit = svg("path", { d, class: "edge-hit" }, group)
@@ -1195,7 +1232,10 @@ export class GraphView {
         }
         addEventListener("pointerup", release)
         addEventListener("pointercancel", release)
-        this.root.addEventListener("click", () => this.handlers.onTap(null))
+        this.root.addEventListener("click", () => {
+            this.pin(null)
+            this.handlers.onTap(null)
+        })
     }
 
     zoomAt(x, y, factor) {

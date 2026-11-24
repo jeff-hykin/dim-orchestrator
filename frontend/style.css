@@ -410,7 +410,12 @@ svg.graph:active {
     }
 }
 
-/* edges */
+/* edges; an edge's own color (and its row's) is --own-color, which --edge-color follows unless muted */
+.edge,
+.stack-row {
+    --edge-color: var(--own-color);
+}
+
 .edge-line {
     fill: none;
     stroke: var(--edge-color, var(--muted-fg));
@@ -446,6 +451,19 @@ svg.graph:active {
     fill: var(--edge-color, var(--muted-fg));
     fill-opacity: 0.9;
     transition: fill 0.4s;
+}
+
+/* while a node is hovered or clicked, edges that aren't its own lose their color */
+.edge.muted {
+    --edge-color: var(--muted-fg);
+}
+
+.edge.muted .edge-line {
+    stroke-opacity: 0.4;
+}
+
+.stack-row.muted {
+    --edge-color: var(--muted-fg);
 }
 
 .edge-requires .arrow-head,
