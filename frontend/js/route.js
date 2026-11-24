@@ -4,9 +4,14 @@
 // how far a route keeps from a box it passes
 const MARGIN = 7
 // what one turn costs, in pixels of length
-const TURN = 36
-// what each pixel along a stretch another route already runs on costs, on top of its length
-const SHARED = 1.5
+const TURN = 90
+// what each pixel running on (or closer than LANE beside) a stretch another route already runs on costs, on top of its
+// length
+const SHARED = 4
+// what crossing an earlier route costs, in pixels of length (so nested bends stay nested instead of crossing twice)
+const CROSS = 60
+// how far apart routes running side by side keep: each earlier stretch offers lanes this far out on either side
+const LANE = 12
 
 const DIRS = [{ x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 0, y: -1 }]
 
@@ -96,8 +101,9 @@ export function route(start, startDir, goals, obstacles, region, used) {
     const y0 = region.y
     const x1 = region.x + region.w
     const y1 = region.y + region.h
-    const xs = axis([x0, x1, start.x, ...goals.map((g) => g.x), ...grown.flatMap((o) => [o.x0, o.x1])], x0, x1)
-    const ys = axis([y0, y1, start.y, ...goals.map((g) => g.y), ...grown.flatMap((o) => [o.y0, o.y1])], y0, y1)
+    const lanes = (lines) => [...lines.keys()].flatMap((at) => [at - 2 * LANE, at - LANE, at + LANE, at + 2 * LANE])
+    const xs = axis([x0, x1, start.x, ...goals.map((g) => g.x), ...grown.flatMap((o) => [o.x0, o.x1]), ...lanes(used.v)], x0, x1)
+    const ys = axis([y0, y1, start.y, ...goals.map((g) => g.y), ...grown.flatMap((o) => [o.y0, o.y1]), ...lanes(used.h)], y0, y1)
     const xi = new Map(xs.map((v, i) => [v, i]))
     const yi = new Map(ys.map((v, i) => [v, i]))
     const snap = (v) => Math.round(v * 2) / 2
@@ -153,8 +159,9 @@ export function route(start, startDir, goals, obstacles, region, used) {
                 continue
             }
             const length = Math.abs(xs[ni] - xs[i]) + Math.abs(ys[nj] - ys[j])
-            const shared = nd % 2 ? overlap(used.v.get(xs[i]), ys[j], ys[nj]) : overlap(used.h.get(ys[j]), xs[i], xs[ni])
-            const next = cost + length + SHARED * shared + (nd === d ? 0 : TURN)
+            const shared = nd % 2 ? near(used.v, xs[i], ys[j], ys[nj]) : near(used.h, ys[j], xs[i], xs[ni])
+            const crossed = nd % 2 ? crossings(used.h, xs[i], ys[j], ys[nj]) : crossings(used.v, ys[j], xs[i], xs[ni])
+            const next = cost + length + SHARED * shared + CROSS * crossed + (nd === d ? 0 : TURN)
             const nextKey = key(ni, nj, nd)
             if (next < (best.get(nextKey) ?? Infinity)) {
                 best.set(nextKey, next)
@@ -183,6 +190,31 @@ export function route(start, startDir, goals, obstacles, region, used) {
         lines.set(at, [...(lines.get(at) ?? []), span.sort((m, k) => m - k)])
     }
     return corners
+}
+
+/** How much of the stretch from `a` to `b` along line `at` runs on or closer than LANE beside earlier stretches. */
+function near(lines, at, a, b) {
+    let total = 0
+    for (const [line, spans] of lines) {
+        if (Math.abs(line - at) < LANE - 0.5) {
+            total += overlap(spans, a, b)
+        }
+    }
+    return total
+}
+
+/**
+ * How many earlier stretches across the way (lines past `a` up to and including `b`, spanning `at`) the stretch from
+ * `a` to `b` cuts; one met where a step ends counts on that step, not the next.
+ */
+function crossings(lines, at, a, b) {
+    let count = 0
+    for (const [line, spans] of lines) {
+        if (a < b ? line > a && line <= b : line < a && line >= b) {
+            count += spans.filter(([m, k]) => at > m && at < k).length
+        }
+    }
+    return count
 }
 
 /** How much of the stretch from `a` to `b` the spans already cover. */

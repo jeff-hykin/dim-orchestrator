@@ -25,8 +25,8 @@ const dot = (cx, cy, r, className, parent) => svg("rect", { x: cx - r, y: cy - r
 
 // container colors: blends of the skin's own colors, kept apart from the kind colors (vars, stream values, ...), --primary
 // (the active state) and --danger (faults)
-/** A polyline as cubic segments, its corners rounded (radius up to 10, less where the legs are short). */
-function roundedSegments(points) {
+/** A polyline as cubic segments, its corners rounded (radius up to `radius`, less where the legs are short). */
+function roundedSegments(points, radius = 10) {
     const clean = points.filter((point, i) => i === 0 || Math.hypot(point.x - points[i - 1].x, point.y - points[i - 1].y) > 0.5)
     const line = (a, b) => [a, a, b, b]
     if (clean.length < 3) {
@@ -36,7 +36,7 @@ function roundedSegments(points) {
     let at = clean[0]
     for (let i = 1; i < clean.length - 1; i++) {
         const [p, c, n] = [clean[i - 1], clean[i], clean[i + 1]]
-        const r = Math.min(10, Math.hypot(c.x - p.x, c.y - p.y) / 2, Math.hypot(n.x - c.x, n.y - c.y) / 2)
+        const r = Math.min(radius, Math.hypot(c.x - p.x, c.y - p.y) / 2, Math.hypot(n.x - c.x, n.y - c.y) / 2)
         const toward = (from, to, d) => {
             const length = Math.hypot(to.x - from.x, to.y - from.y) || 1
             return { x: from.x + ((to.x - from.x) / length) * d, y: from.y + ((to.y - from.y) / length) * d }
@@ -61,6 +61,9 @@ const EDGE_COLORS = [
     "color-mix(in oklch, var(--warn) 75%, var(--fg))",
     "color-mix(in oklch, var(--info) 50%, var(--accent-alt))",
 ]
+
+// how wide the Curves style's routed edges swing round their corners
+const CURVE_RADIUS = 44
 
 const HUES = [
     "color-mix(in oklch, var(--info) 55%, var(--ok))",
@@ -360,6 +363,9 @@ export class GraphView {
         } else {
             svg("rect", { x: rect.x, y: rect.y, width: rect.w, height: rect.h, class: "box leaf-box" }, group)
             svg("text", { x: rect.x + 10, y: rect.y + TITLE - 6, class: "node-name", "font-size": size.font }, group).textContent = node.id
+            // not hovered, just its name, in the middle
+            const centered = svg("text", { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2, class: "node-name name-centered", "text-anchor": "middle", "dominant-baseline": "middle", "font-size": size.font }, group)
+            centered.textContent = node.id
             let y = rect.y + TITLE + 2
             const sub = this.subtitle(node)
             if (sub) {
@@ -448,7 +454,7 @@ export class GraphView {
         if (this.style === "curves") {
             const corners = this.routeAround(edge, lead)
             if (corners) {
-                return [[port, port, lead, lead], ...roundedSegments(corners)]
+                return [[port, port, lead, lead], ...roundedSegments(corners, CURVE_RADIUS)]
             }
         }
         if (edge.from === edge.to) {
@@ -516,7 +522,8 @@ export class GraphView {
         const to = rects.get(edge.to)
         const toSize = this.sizes.get(edge.to)
         const box = to
-        const gap = 13
+        // how far out from the target the last turn may come, so the arrowhead sits on a straight run
+        const gap = 30
         const clamp = (value, low, high) => Math.min(high, Math.max(low, value))
         const goals = []
         const self = edge.from === edge.to
@@ -552,7 +559,7 @@ export class GraphView {
     }
 
     /**
-     * Containers are closed (their name in the middle, what is inside hidden) except the hovered node's and the ones
+     * Nodes are closed (just their name in the middle; a container's inside hidden) except the hovered one, the ones
      * around it, and the outermost. An edge hides when both its ends are hidden.
      */
     applyOpen() {
@@ -570,7 +577,7 @@ export class GraphView {
         }
         for (const [id, element] of this.nodeEls) {
             const node = this.model.nodes.get(id)
-            element.classList.toggle("closed", (node?.kind === "compound" || node?.kind === "parallel") && !open.has(id))
+            element.classList.toggle("closed", node?.kind !== "final" && !open.has(id))
             element.classList.toggle("tucked", hidden(id))
         }
         for (const edge of this.model.edges) {

@@ -1973,7 +1973,7 @@ span.bb-link {
     opacity: 1;
 }
 
-/* a container shows just its name, in the middle, until it (or something inside it) is hovered */
+/* a node shows just its name, in the middle, until it (or something inside it) is hovered */
 .name-centered {
     display: none;
 }
@@ -1982,7 +1982,9 @@ span.bb-link {
     display: inline;
 }
 
-.node.closed > .node-name:not(.name-centered) {
+.node.closed > .node-name:not(.name-centered),
+.node.closed > .node-sub,
+.node.closed > .node-chips {
     opacity: 0;
 }
 
