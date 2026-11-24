@@ -122,6 +122,7 @@ const graph = new GraphView($("#graph"), {
         }
     },
     onLeave: hideTip,
+    onFocus: (nodeId) => panel.focus(nodeId),
     onTap: (target, event) => {
         if (!target) {
             app.pinned = null

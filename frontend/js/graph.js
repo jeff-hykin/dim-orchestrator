@@ -778,6 +778,10 @@ export class GraphView {
             this.model.nodes.forEach((_, id) => open.add(id))
         }
         const focus = this.hovered ?? this.pinned
+        if (focus !== this.focused) {
+            this.focused = focus
+            this.handlers.onFocus?.(focus)
+        }
         for (const start of [this.hovered, this.pinned]) {
             for (let at = start; at != null; at = this.model.nodes.get(at)?.parent) {
                 open.add(at)

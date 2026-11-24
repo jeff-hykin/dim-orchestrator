@@ -7,12 +7,51 @@ import { edgeLabel } from "./graph.js"
 import { groupOf } from "./model.js"
 
 /** The transitions whose `if` or `after` reads `key` (directly, or a field of it). */
+/** Matches `key` as a whole name in an expression (not part of a longer one). */
+const readsKey = (key) => new RegExp(`(^|[^\\w.])${key.replace(/[.]/g, "\\.")}($|[^\\w])`)
+
 function usersOf(model, key) {
-    const reads = new RegExp(`(^|[^\\w.])${key.replace(/[.]/g, "\\.")}($|[^\\w])`)
+    const reads = readsKey(key)
     return model.edges
         .filter((edge) => edge.transition)
         .filter(({ transition }) => [transition.if, transition.after].some((source) => source != null && reads.test(String(source))))
         .map((edge) => edge.id)
+}
+
+/** Which of `names` a node (or anything inside it) reads, sets or returns. */
+function usedBy(model, id, names) {
+    const inside = (nodeId) => {
+        for (let at = nodeId; at != null; at = model.nodes.get(at)?.parent) {
+            if (at === id) {
+                return true
+            }
+        }
+        return false
+    }
+    const sources = []
+    const keys = new Set()
+    for (const node of model.nodes.values()) {
+        if (node.def && inside(node.id)) {
+            sources.push(JSON.stringify([node.def.args, node.def.requires, node.def.ensures]))
+            if (node.def.result) {
+                keys.add(node.def.result)
+            }
+        }
+    }
+    for (const edge of model.edges) {
+        if (edge.transition && inside(edge.from)) {
+            sources.push(String(edge.transition.if ?? ""), String(edge.transition.after ?? ""))
+            Object.keys(edge.transition.set ?? {}).forEach((key) => keys.add(key))
+            sources.push(JSON.stringify(Object.values(edge.transition.set ?? {})))
+        }
+    }
+    const text = sources.join("\n")
+    for (const key of names) {
+        if (readsKey(key).test(text)) {
+            keys.add(key)
+        }
+    }
+    return keys
 }
 
 /** How many decimals a number shows (at most 4, as values are drawn elsewhere). */
@@ -131,12 +170,21 @@ export class BlackboardPanel {
             editButton,
         )
         const element = h("div", { class: "bb-row", "data-key": key }, line, h("div", { class: "bb-detail" }, sources, full))
+        element.classList.toggle("unused", this.used != null && !this.used.has(key))
         this.sections.get(group).body.append(element)
         const row = { element, preview, full, group, last: undefined, value: undefined }
         this.rows.set(key, row)
         element.classList.toggle("expanded", this.expanded.has(key))
         this.updateCount(group)
         return row
+    }
+
+    /** While a node is hovered (or clicked), only the names it uses keep their color; null brings them all back. */
+    focus(nodeId) {
+        this.used = nodeId == null || !this.model ? null : usedBy(this.model, nodeId, this.rows.keys())
+        for (const [key, row] of this.rows) {
+            row.element.classList.toggle("unused", this.used != null && !this.used.has(key))
+        }
     }
 
     toggleRow(key) {

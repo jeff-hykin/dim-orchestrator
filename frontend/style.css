@@ -1320,6 +1320,15 @@ span.bb-link {
     background: color-mix(in srgb, var(--kind, var(--fg)) 8%, transparent);
 }
 
+/* while a node is hovered or clicked, the blackboard names it doesn't use lose their color */
+.bb-row.unused .pill[class*="pill-"] {
+    --kind: var(--muted-fg);
+}
+
+.bb-row.unused .bb-preview {
+    opacity: 0.45;
+}
+
 .d-chip[class*="pill-"] {
     color: var(--kind, var(--muted-fg));
     border-color: color-mix(in srgb, var(--kind, var(--fg)) 55%, transparent);
