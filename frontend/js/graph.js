@@ -451,10 +451,12 @@ export class GraphView {
         const from = this.layout.rects.get(edge.from)
         const port = portOf(this.model, edge, from, stackTop(this.sizes.get(edge.from)))
         const lead = { x: port.x + LEAD, y: port.y }
-        if (this.style === "curves") {
+        if (this.style === "curves" || this.style === "arcs") {
+            // the same lanes either way (apart from other edges, crossing them as little as it can); Arcs swing round
+            // each corner as wide as its legs allow
             const corners = this.routeAround(edge, lead)
             if (corners) {
-                return [[port, port, lead, lead], ...roundedSegments(corners, CURVE_RADIUS)]
+                return [[port, port, lead, lead], ...roundedSegments(corners, this.style === "arcs" ? Infinity : CURVE_RADIUS)]
             }
         }
         if (edge.from === edge.to) {
