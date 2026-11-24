@@ -370,7 +370,8 @@ export class GraphView {
         this.used = null
         this.colored = 0
         const nodeLayer = svg("g", { class: "nodes" }, this.world)
-        const edgeLayer = svg("g", { class: "edges" }, this.world)
+        // edges go behind nodes: each one just over the innermost container holding both its ends, under that container's children
+        const edgeLayers = new Map([[null, svg("g", { class: "edges" }, nodeLayer)]])
         const labelLayer = svg("g", { class: "labels" }, this.world)
         // a hovered node's conditions, over every edge and label
         this.conditionLayer = svg("g", { class: "conditions" }, this.world)
@@ -397,11 +398,30 @@ export class GraphView {
         }
         for (const node of ordered.filter((one) => one.kind !== "start")) {
             this.drawNode(nodeLayer, node, layout.rects.get(node.id))
+            if (node.inside.length) {
+                edgeLayers.set(node.id, svg("g", { class: "edges" }, nodeLayer))
+            }
+        }
+        const ancestors = (id) => {
+            const chain = []
+            for (let at = model.nodes.get(id)?.parent; at != null; at = model.nodes.get(at)?.parent) {
+                chain.push(at)
+            }
+            return chain
+        }
+        const edgeLayerOf = (edge) => {
+            if (edge.kind === "initial") {
+                return edgeLayers.get(edge.node) ?? edgeLayers.get(null)
+            }
+            // an edge between a container and something inside it lives inside that container
+            const around = new Set([edge.to, ...ancestors(edge.to)])
+            const shared = [edge.from, ...ancestors(edge.from)].find((id) => around.has(id) && edgeLayers.has(id))
+            return edgeLayers.get(shared ?? null)
         }
         this.routeAll()
         this.arrivals = this.style === "hierarchy" ? this.spreadArrivals() : new Map()
         for (const edge of model.edges) {
-            this.drawEdge(edgeLayer, labelLayer, edge)
+            this.drawEdge(edgeLayerOf(edge), labelLayer, edge)
         }
         this.hovered = null
         this.applyOpen()
@@ -551,6 +571,12 @@ export class GraphView {
                 return [[port, port, lead, lead], ...roundedSegments(corners, this.style === "arcs" ? Infinity : 0, this.cornerBlockers(edge))]
             }
         }
+        if (this.style === "hierarchy") {
+            // a self-transition too: round under, into the left side like every other edge
+            const index = stackOf(this.model, edge.from).indexOf(edge)
+            const under = Math.max(from.y + from.h, to.y + to.h) + 24 + index * 8
+            return flowCurve(port, { x: to.x - 3, y: this.arrivals.get(edge.id) ?? to.y + to.h / 2 }, this.layout.routes?.get(edge.id) ?? [], under)
+        }
         if (edge.from === edge.to) {
             // out of the row, then round over the node's top-right corner and down into it
             const corner = { x: from.x + from.w + LEAD + 10, y: from.y - 16 }
@@ -558,11 +584,6 @@ export class GraphView {
             return [[port, port, lead, lead], [lead, { x: lead.x + 12, y: lead.y }, { x: corner.x, y: corner.y + 10 }, corner], [corner, { x: corner.x - 10, y: corner.y - 8 }, { x: end.x, y: end.y - 14 }, end]]
         }
         const bends = this.layout.routes?.get(edge.id) ?? []
-        if (this.style === "hierarchy") {
-            const index = stackOf(this.model, edge.from).indexOf(edge)
-            const under = Math.max(from.y + from.h, to.y + to.h) + 24 + index * 8
-            return flowCurve(port, { x: to.x - 3, y: this.arrivals.get(edge.id) ?? to.y + to.h / 2 }, bends, under)
-        }
         const vertical = this.style === "arcs" ? (this.layout.vertical.get(edge.id) ?? false) : null
         const head = [port, port, lead, lead]
         if (to.x <= lead.x + 8) {
@@ -731,7 +752,7 @@ export class GraphView {
     spreadArrivals() {
         const arrivals = new Map()
         const into = new Map()
-        for (const edge of this.model.edges.filter((one) => stacked(one) && one.from !== one.to)) {
+        for (const edge of this.model.edges.filter((one) => stacked(one))) {
             const from = this.layout.rects.get(edge.from)
             const to = this.layout.rects.get(edge.to)
             if (!from || !to) {
