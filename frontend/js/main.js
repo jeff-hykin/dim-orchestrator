@@ -251,7 +251,7 @@ try {
 } catch {
     // no storage
 }
-graph.style = pickedLayout in LAYOUT_STYLES ? pickedLayout : "curves"
+graph.style = pickedLayout in LAYOUT_STYLES ? pickedLayout : "flow"
 layoutPicker.value = graph.style
 layoutPicker.addEventListener("change", () => {
     graph.setStyle(layoutPicker.value)

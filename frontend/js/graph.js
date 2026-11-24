@@ -8,7 +8,7 @@ import { route, simplify } from "./route.js"
 import { LEAD, portOf, ROW, stacked, stackOf, stackTop } from "./stack.js"
 
 // how the graph is laid out and its edges drawn: our own nested layout with curves, or ELK with one of its routings
-export const LAYOUT_STYLES = { hierarchy: "Hierarchy", curves: "Curves", arcs: "Arcs", "elk-polyline": "Corners", "elk-splines": "Splines" }
+export const LAYOUT_STYLES = { flow: "Flow", arcs: "Arcs", "elk-polyline": "Corners", "elk-splines": "Splines" }
 
 const SVG = "http://www.w3.org/2000/svg"
 const svg = (tag, attrs = {}, parent) => {
@@ -70,13 +70,13 @@ const EDGE_COLORS = [
 
 // how wide a routed edge swings round its corners when it falls back to rounded corners
 const CURVE_RADIUS = 44
-// Hierarchy: the smallest zoom fitting it picks (dimos-react's)
+// Flow: the smallest zoom fitting it picks (dimos-react's)
 const HIERARCHY_MIN_ZOOM = 0.8
-// Hierarchy: how far apart the edges coming into one node arrive
+// Flow: how far apart the edges coming into one node arrive
 const ARRIVAL_STEP = 10
 
 /**
- * Hierarchy's edge, as dimos-react's flowPath draws it: level out of `a` and level into `b`; with bends (the layered
+ * Flow's edge, as dimos-react's flowPath draws it: level out of `a` and level into `b`; with bends (the layered
  * layout's dummy points between its layers), along the middle one's height, swinging onto it and off it; without, one S.
  */
 function flowCurve(a, b, bends, under) {
@@ -107,12 +107,6 @@ const PASSES = 4
 // how close a rounded corner may swing to a box it goes round
 const PADDING = 6
 
-/**
- * A route of straight horizontal and vertical stretches as flowing curves: each vertical stretch becomes one S (or C)
- * from the middle of the horizontal before it to the middle of the one after, level at both ends, so the edge leaves
- * and arrives flat and swings between them along its lane. A last stretch that comes in from above or below eases into
- * it. Where an S would cut across a box in `blockers`, that stretch keeps its rounded corners instead.
- */
 /** Whether a cubic segment passes through any of `boxes` or within `margin` of one. */
 function cuts([p0, p1, p2, p3], boxes, margin = 2) {
     for (let step = 1; step < 24; step++) {
@@ -125,31 +119,6 @@ function cuts([p0, p1, p2, p3], boxes, margin = 2) {
         }
     }
     return false
-}
-
-function flowSegments(points, blockers = []) {
-    const clean = simplify(points)
-    if (clean.length < 3) {
-        return roundedSegments(clean)
-    }
-    const segments = []
-    let at = clean[0]
-    for (let i = 1; i < clean.length; i++) {
-        const [a, b] = [clean[i - 1], clean[i]]
-        if (Math.abs(a.x - b.x) > 0.5) {
-            continue
-        }
-        // a vertical stretch at x = a.x: from `at` to the middle of the next horizontal stretch (or the very end)
-        const next = clean[i + 1]
-        const to = next ? { x: (b.x + next.x) / 2, y: b.y } : b
-        const curve = next ? [at, { x: a.x, y: at.y }, { x: a.x, y: to.y }, to] : [at, { x: a.x, y: at.y }, { x: a.x, y: (at.y + b.y) / 2 }, b]
-        segments.push(...(cuts(curve, blockers) ? roundedSegments([at, { x: a.x, y: at.y }, { x: a.x, y: to.y }, to], CURVE_RADIUS, blockers) : [curve]))
-        at = to
-    }
-    if (Math.hypot(at.x - clean.at(-1).x, at.y - clean.at(-1).y) > 0.5) {
-        segments.push([at, at, clean.at(-1), clean.at(-1)])
-    }
-    return segments
 }
 
 const HUES = [
@@ -245,7 +214,7 @@ export class GraphView {
         this.nodeEls = new Map()
         this.edgeEls = new Map()
         this.timerEls = new Map()
-        this.style = "curves"
+        this.style = "flow"
         this.frames = []
         this.setUpPanZoom()
         new ResizeObserver(() => !this.userMoved && this.fit()).observe(container)
@@ -327,7 +296,7 @@ export class GraphView {
     }
 
     setStyle(style) {
-        this.style = style in LAYOUT_STYLES ? style : "curves"
+        this.style = style in LAYOUT_STYLES ? style : "flow"
         if (this.model) {
             this.setModel(this.model)
         }
@@ -353,9 +322,9 @@ export class GraphView {
         }
         let layout
         try {
-            layout = ["hierarchy", "curves", "arcs"].includes(this.style) ? layoutGraph(model, measure, labelWidth, aspect, this.style === "arcs", this.style === "hierarchy") : await layoutElk(model, measure, labelWidth, this.style, aspect)
+            layout = ["flow", "arcs"].includes(this.style) ? layoutGraph(model, measure, labelWidth, aspect, this.style === "arcs", this.style === "flow") : await layoutElk(model, measure, labelWidth, this.style, aspect)
         } catch (error) {
-            console.warn(`${this.style} layout failed, using curves:`, error)
+            console.warn(`${this.style} layout failed, using arcs:`, error)
             layout = layoutGraph(model, measure, labelWidth, aspect)
         }
         if (token !== this.drawing) {
@@ -419,7 +388,7 @@ export class GraphView {
             return edgeLayers.get(shared ?? null)
         }
         this.routeAll()
-        this.arrivals = this.style === "hierarchy" ? this.spreadArrivals() : new Map()
+        this.arrivals = this.style === "flow" ? this.spreadArrivals() : new Map()
         for (const edge of model.edges) {
             this.drawEdge(edgeLayerOf(edge), labelLayer, edge)
         }
@@ -560,18 +529,15 @@ export class GraphView {
         const from = this.layout.rects.get(edge.from)
         const port = portOf(this.model, edge, from, stackTop(this.sizes.get(edge.from)))
         const lead = { x: port.x + LEAD, y: port.y }
-        if (this.style === "curves" || this.style === "arcs" || this.style === "elk-polyline") {
+        if (this.style === "arcs" || this.style === "elk-polyline") {
             // the same lanes in each (apart from other edges, crossing them as little as it can); Arcs swing round each
             // corner as wide as its legs allow, Corners (on ELK's placement of the nodes) keep them sharp
             const corners = this.routed?.get(edge.id) ?? this.routeAround(edge, lead)
             if (corners) {
-                if (this.style === "curves") {
-                    return flowSegments([port, ...corners], this.blockers(edge))
-                }
                 return [[port, port, lead, lead], ...roundedSegments(corners, this.style === "arcs" ? Infinity : 0, this.cornerBlockers(edge))]
             }
         }
-        if (this.style === "hierarchy") {
+        if (this.style === "flow") {
             // a self-transition too: round under, into the left side like every other edge
             const index = stackOf(this.model, edge.from).indexOf(edge)
             const under = Math.max(from.y + from.h, to.y + to.h) + 24 + index * 8
@@ -693,13 +659,13 @@ export class GraphView {
     }
 
     /**
-     * Curves, Arcs and Corners: every stacked edge's route, worked out before any is drawn. Each is routed once in order, then
+     * Arcs and Corners: every stacked edge's route, worked out before any is drawn. Each is routed once in order, then
      * routed again with all the others in place (its own first route taken out), so an early edge isn't stuck with
      * the inner lane a later one needed: nested bends end up nested, not crossing.
      */
     routeAll() {
         this.routed = new Map()
-        if (!["curves", "arcs", "elk-polyline"].includes(this.style)) {
+        if (!["arcs", "elk-polyline"].includes(this.style)) {
             return
         }
         const leads = new Map()
@@ -745,7 +711,7 @@ export class GraphView {
     }
 
     /**
-     * Hierarchy: where each edge comes into its target's left side. The edges into one node are spread down it, a
+     * Flow: where each edge comes into its target's left side. The edges into one node are spread down it, a
      * little apart, in the order they come from (by the track they run along, else the row they leave), so they don't
      * cross as they arrive.
      */
@@ -896,7 +862,7 @@ export class GraphView {
         }
         const path = svg("path", { d, class: "edge-line" }, group)
         const hit = svg("path", { d, class: "edge-hit" }, group)
-        if (this.style !== "hierarchy" && edge.kind !== "initial" && stacked(edge) && this.crossesNode(edge, path)) {
+        if (this.style !== "flow" && edge.kind !== "initial" && stacked(edge) && this.crossesNode(edge, path)) {
             // an edge whose curve would run over a node takes the routed way round it, with rounded corners
             const start = path.getPointAtLength(0)
             const lead = { x: start.x + LEAD, y: start.y }
@@ -1172,8 +1138,8 @@ export class GraphView {
         const bottom = 52 // the edge-style setting sits in the bottom-left corner
         const fitHeight = (box.height - margin - bottom) / Math.max(1, drawn.height)
         let k = Math.min(2, (box.width - margin * 2) / Math.max(1, drawn.width), fitHeight)
-        // a wide Hierarchy scrolls rather than shrinking to nothing (as dimos-react's does), starting from its left
-        if (this.style === "hierarchy") {
+        // a wide Flow scrolls rather than shrinking to nothing (as dimos-react's does), starting from its left
+        if (this.style === "flow") {
             k = Math.max(k, Math.min(fitHeight, HIERARCHY_MIN_ZOOM))
         }
         const wide = drawn.width * k > box.width - margin * 2
