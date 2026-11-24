@@ -1,5 +1,5 @@
-// The page: finds a running orchestrator, follows its journal, and keeps the graph, the blackboard and the timeline
-// on the step being shown (the newest one, or one picked on the timeline).
+// The page: finds a running orchestrator, follows its orchestrator_state stream, and keeps the graph, the blackboard
+// and the timeline on the step being shown (the newest one, or one picked on the timeline). View only.
 
 import * as api from "./api.js"
 import { BlackboardPanel } from "./blackboard.js"
@@ -11,8 +11,7 @@ import { SourceView } from "./source.js"
 import { buildModel, edgeForRecord } from "./model.js"
 import { Timeline } from "./timeline.js"
 
-// How long to wait between journal reads, and between looks for an orchestrator when none runs.
-const POLL_S = 0.12
+// How long to wait between looks for an orchestrator when none runs.
 const SEARCH_S = 1.5
 
 const $ = (selector) => document.querySelector(selector)
@@ -136,14 +135,11 @@ const graph = new GraphView($("#graph"), {
 })
 
 const panel = new BlackboardPanel($("#blackboard-body"), {
-    onEdit: async (key, value) => {
-        try {
-            await api.setValue(app.moduleId, key, value)
-            toast(`set ${key}`)
-        } catch (error) {
-            toast(`could not set ${key}: ${error.message}`, "danger")
-        }
+    onTip: (content, event) => {
+        app.pinned = null
+        showTip(content, event)
     },
+    onLeaveTip: hideTip,
     onPick: (edges, nodes) => {
         graph.highlight(edges, nodes)
         toast(edges.length ? "transitions that write it are outlined" : "the node that writes it is outlined")
@@ -223,18 +219,7 @@ try {
 setPanel(panelPref == null ? innerWidth >= 700 : panelPref === "1")
 $("#toggle-panel").addEventListener("click", () => setPanel(!body.classList.contains("panel-open")))
 $("#close-panel").addEventListener("click", () => setPanel(false))
-const source = new SourceView($("#graph"), {
-    onApply: async (text) => {
-        const problems = await api.setSource(app.moduleId, text)
-        if (!problems.length) {
-            toast("Applied: the orchestrator restarted on the new file")
-            // the journal starts over at 1: reconnect now rather than at the next poll
-            app.generation++
-            run()
-        }
-        return problems
-    },
-})
+const source = new SourceView($("#graph"))
 for (const format of ["toml", "yaml"]) {
     $(`#show-${format}`).addEventListener("click", () => {
         source.show(source.open && source.format === format ? null : format)
@@ -360,7 +345,6 @@ function render(mode) {
     }
     graph.show(step, animate ? { frames } : {})
     app.shownSeq = step.seq
-    panel.setEditable(timeline.index == null && app.status === "connected" && !app.readOnly)
     timeline.draw(Date.now() / 1000 + app.clockOffset)
     const rewound = timeline.index != null
     body.classList.toggle("rewound", rewound)
@@ -393,12 +377,10 @@ function setStatus(status, detail = "") {
         stopped: "orchestrator stopped",
     }[status]
     chip.title = detail
-    source.setEditable(status === "connected" && !app.readOnly)
     const empty = $("#empty")
     const showEmpty = !app.model && status !== "connected"
     empty.hidden = !showEmpty
     $("#empty-detail").textContent = status === "gateway-down" ? `The dimos gateway did not answer${detail ? `: ${detail}` : ""}.` : "Start a blueprint with an Orchestrator module, e.g."
-    panel.setEditable?.(status === "connected" && !app.readOnly && timeline.index == null)
 }
 
 function fillPicker(orchestrators) {
@@ -474,7 +456,7 @@ function stateEntry(message, before, time) {
     }
 }
 
-/** Follow an orchestrator without the journal RPCs through its orchestrator_state topic: view only. */
+/** Follow an orchestrator through its orchestrator_state topic, asking for its state first so a quiet one still shows. */
 async function followStream(moduleId, generation) {
     setStatus("connecting")
     const queue = []
@@ -483,6 +465,7 @@ async function followStream(moduleId, generation) {
         queue.push(message)
         wake?.()
     })
+    api.requestState().catch((error) => console.warn("could not ask for the orchestrator's state:", error.message))
     try {
         let caughtUp = false
         while (generation === app.generation) {
@@ -497,8 +480,12 @@ async function followStream(moduleId, generation) {
             }
             const message = queue.shift()
             const history = app.history
+            // a state request (ours, or another viewer's) repeats a step already shown
+            if (message.handled === "state request" && app.model && app.moduleId === moduleId && message.seq >= history.seq && JSON.stringify(app.model.definition) === JSON.stringify(message.definition)) {
+                continue
+            }
             if (!app.model || app.moduleId !== moduleId || message.seq < history.seq || JSON.stringify(app.model.definition) !== JSON.stringify(message.definition)) {
-                showFile(message.definition, `${moduleId} (orchestrator_state)`)
+                showFile(message.definition, moduleId)
                 app.moduleId = moduleId
                 app.clockOffset = 0
                 source.setSource(app.file, "")
@@ -506,6 +493,7 @@ async function followStream(moduleId, generation) {
                 setStatus("connected")
                 caughtUp = false
             }
+            panel.setInterface(message.rpcs ?? {}, message.streams ?? {})
             const added = history.add([stateEntry(message, history.last, Date.now() / 1000)])
             if (added.length && timeline.index == null) {
                 render(caughtUp && !queue.length ? "live" : "jump")
@@ -519,55 +507,6 @@ async function followStream(moduleId, generation) {
     }
 }
 
-async function follow(moduleId, generation) {
-    // ?stream follows the stream even where the journal RPCs exist, to try that mode
-    app.readOnly = new URLSearchParams(location.search).has("stream") || !api.hasJournal(app.modules.find((module) => module.id === moduleId))
-    if (app.readOnly) {
-        return followStream(moduleId, generation)
-    }
-    setStatus("connecting")
-    const found = await api.getDefinition(moduleId)
-    const snapshot = await api.getState(moduleId)
-    app.clockOffset = (snapshot.time ?? Date.now() / 1000) - Date.now() / 1000
-    const sameFile = app.model && JSON.stringify(app.model.definition) === JSON.stringify(found.definition) && app.moduleId === moduleId
-    const history = app.history
-    let first = await api.getJournal(moduleId, 0)
-    const restarted = history.steps.length && (first.seq < history.seq || first.entries[0]?.time !== history.steps[0]?.time)
-    if (!sameFile || restarted) {
-        showFile(found.definition, found.file)
-    }
-    app.moduleId = moduleId
-    source.setSource(found.file, found.source)
-    source.setNames(namesFor(app.model, {}))
-    if (!history.steps.length && first.oldest > 1) {
-        history.seed(snapshot)
-        first = await api.getJournal(moduleId, snapshot.seq)
-    }
-    setStatus("connected")
-    let entries = first.entries
-    let more = entries.length > 0
-    // the steps from before we connected (a reload, a reconnect) are history: show where they ended, don't play them
-    let caughtUp = false
-    while (generation === app.generation) {
-        const added = history.add(entries)
-        if (added.length && timeline.index == null) {
-            render(caughtUp ? "live" : "jump")
-        } else if (added.length) {
-            timeline.draw()
-        }
-        if (!more) {
-            await wait(POLL_S)
-        }
-        const page = await api.getJournal(moduleId, history.seq)
-        if (page.seq < history.seq) {
-            throw new Error("the orchestrator restarted")
-        }
-        caughtUp ||= !more
-        entries = page.entries
-        more = page.entries.length > 0 && page.entries.at(-1).seq < page.seq
-    }
-}
-
 async function run() {
     const generation = app.generation
     while (generation === app.generation) {
@@ -576,7 +515,7 @@ async function run() {
             return
         }
         try {
-            await follow(moduleId, generation)
+            await followStream(moduleId, generation)
         } catch (error) {
             console.warn("lost the orchestrator:", error)
             setStatus("stopped", error.message)

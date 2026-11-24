@@ -5,7 +5,19 @@ spec-version: v1.6
 uses:
     "@dimos-gateway":
         - GET active/modules
-        - POST active/modules/{id}/rpcs/{name}
     "@desktop-gateway":
         - GET management/gateways/zenoh
     "@zenoh-gateway": ">=0.5 <0.6"
+# what the page does on zenoh: follow orchestrator_state, and ask for it on orchestrator_state_request
+zenoh:
+    default_permission: deny
+    read:
+        - id: state
+          messages: [declare_subscriber, put]
+          key_exprs: ["dimos/orchestrator_state/std_msgs.String"]
+          permission: allow
+    write:
+        - id: state-request
+          messages: [put]
+          key_exprs: ["dimos/orchestrator_state_request/std_msgs.Bool"]
+          permission: allow

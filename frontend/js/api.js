@@ -1,4 +1,5 @@
-// The running orchestrator, through the dimos gateway: find its module, read its definition and journal, set values.
+// The running orchestrator: found through the dimos gateway, followed through Desktop's zenoh-gateway. The app only
+// reads: it asks for the state on orchestrator_state_request and draws each message on orchestrator_state.
 
 const GATEWAY = "../../gateways/dimos/"
 
@@ -26,38 +27,15 @@ export async function runningModules() {
     }
 }
 
-/** The running modules that are orchestrators: an Orchestrator class, or anything with its RPCs. */
+/** The running modules that are orchestrators. */
 export function orchestratorsIn(modules) {
-    return modules.filter((module) => module.class === "Orchestrator" || hasJournal(module))
+    return modules.filter((module) => module.class === "Orchestrator")
 }
-
-/** Whether a module has the journal RPCs; without them the app follows its orchestrator_state stream instead. */
-export function hasJournal(module) {
-    const names = new Set((module?.rpcs ?? []).map((rpc) => rpc.name))
-    return names.has("journal") && names.has("definition") && names.has("state")
-}
-
-/** Call one RPC of a running module. */
-export async function call(moduleId, name, kwargs = {}) {
-    const body = await json(`active/modules/${encodeURIComponent(moduleId)}/rpcs/${encodeURIComponent(name)}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ args: [], kwargs }),
-    })
-    if (!body.ok) {
-        throw new Error(body.error ?? `${name} failed`)
-    }
-    return body.result
-}
-
-export const getDefinition = (moduleId) => call(moduleId, "definition")
-export const getState = (moduleId) => call(moduleId, "state")
-export const getJournal = (moduleId, after, limit = 1000) => call(moduleId, "journal", { after, limit })
-export const setValue = (moduleId, key, value) => call(moduleId, "set_value", { key, value })
-/** Replace the orchestrator's file: the problems found (nothing changed), or [] once it runs the new file. */
-export const setSource = (moduleId, source) => call(moduleId, "set_source", { source })
 
 const STATE_KEY = "dimos/orchestrator_state/std_msgs.String" // dimos-yaml-check: ignore
+const REQUEST_KEY = "dimos/orchestrator_state_request/std_msgs.Bool" // dimos-yaml-check: ignore
+// std_msgs.Bool(True) as LCM: its 8-byte fingerprint, then the bool
+const TRUE_BOOL = Uint8Array.of(0x1e, 0xbe, 0xf0, 0x6a, 0x50, 0x95, 0x0e, 0x3e, 1)
 
 /** A std_msgs.String's text from its LCM bytes: an 8-byte hash, a big-endian int32 length (counting a closing NUL),
  * then UTF-8. Read here rather than with the gateway's msgs.js, which a gateway may take minutes to build. */
@@ -67,11 +45,21 @@ function lcmString(bytes) {
     return new TextDecoder().decode(bytes.subarray(12, 12 + Math.max(0, length - 1)))
 }
 
-/** `callback(state)` with each orchestrator_state message, parsed, straight from Desktop's zenoh-gateway (every step,
- * in order). Returns the unsubscribe. */
-export async function watchState(callback) {
+async function zenoh() {
     const { getZenoh } = await import("../vendor/dim-app/zenoh.js")
-    return getZenoh().subscribe(STATE_KEY, { delivery: "reliable" }, (message) => {
+    return getZenoh()
+}
+
+/** `callback(state)` with each orchestrator_state message, parsed (every step, in order). Returns the unsubscribe. */
+export async function watchState(callback) {
+    return (await zenoh()).subscribe(STATE_KEY, { delivery: "reliable" }, (message) => {
         callback(JSON.parse(lcmString(message.bytes)))
     })
+}
+
+/** Ask the orchestrator to publish its state now, rather than at its next step. */
+export async function requestState() {
+    const client = await zenoh()
+    await client.ready
+    await client.client.put(REQUEST_KEY, TRUE_BOOL)
 }

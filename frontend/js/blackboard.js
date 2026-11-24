@@ -71,7 +71,7 @@ const GROUPS = [
 export class BlackboardPanel {
     /**
      * @param {HTMLElement} container
-     * @param {{ onEdit: (key: string, value: any) => Promise<void>, onPick: (edgeIds: string[], nodeIds: string[]) => void }} handlers
+     * @param {{ onPick: (edgeIds: string[], nodeIds: string[]) => void, onTip: (content: Node, event: PointerEvent) => void, onLeaveTip: () => void }} handlers
      */
     constructor(container, handlers) {
         this.container = container
@@ -79,7 +79,6 @@ export class BlackboardPanel {
         this.rows = new Map()
         this.collapsed = new Set(["constants"])
         this.expanded = new Set()
-        this.editable = false
     }
 
     setModel(model) {
@@ -105,6 +104,94 @@ export class BlackboardPanel {
             this.container.append(section)
         }
         GROUPS.forEach(([id]) => this.updateCount(id))
+        this.interface = null
+        this.rpcList = this.listSection("rpcs", "RPCs", "what the file calls: hover for its docstring")
+        this.streamList = this.listSection("stream-list", "Streams", "what the file listens to")
+    }
+
+    /** A collapsible section that isn't blackboard keys: the RPCs or the streams. */
+    listSection(id, title, note) {
+        const body = h("div", { class: "bb-body" })
+        const count = h("span", { class: "bb-count" })
+        const section = h(
+            "section",
+            { class: `bb-group bb-${id}`, hidden: "" },
+            h("button", { class: "bb-group-head", type: "button", onclick: () => section.classList.toggle("collapsed") }, h("span", { class: "bb-caret" }, "▾"), h("span", { class: "bb-group-title" }, title), count, h("span", { class: "bb-note" }, note)),
+            body,
+        )
+        this.container.append(section)
+        return { section, body, count }
+    }
+
+    /** The RPCs the file calls (with their signature and docstring) and the streams it reads (with their message type),
+     * from the orchestrator_state message. */
+    setInterface(rpcs, streams) {
+        const text = JSON.stringify([rpcs, streams])
+        if (!this.model || this.interface === text) {
+            return
+        }
+        this.interface = text
+        const model = this.model
+        const nodesRunning = (rpc) => {
+            const uses = []
+            for (const activity of model.activities.values()) {
+                const as = activity.start === rpc ? "start" : activity.cancel === rpc ? "cancel" : null
+                if (as) {
+                    for (const node of model.definition.nodes.filter((n) => n.activity === activity.name)) {
+                        uses.push({ node: node.name, as })
+                    }
+                }
+            }
+            return uses
+        }
+        const fill = ({ section, body, count }, rows) => {
+            body.replaceChildren(...rows)
+            count.textContent = String(rows.length)
+            section.hidden = rows.length === 0
+        }
+        fill(this.rpcList, Object.entries(rpcs).sort(([a], [b]) => a.localeCompare(b)).map(([name, info]) => {
+            const uses = nodesRunning(name)
+            const tip = () => h("div", { class: "rpc-tip" }, h("code", { class: "rpc-sig" }, `${name}${(info.signature ?? "(…)").replace(/^\(self,?\s*/, "(")}`), h("div", { class: "rpc-doc" }, info.doc?.trim() || "No docstring."))
+            return h(
+                "div",
+                {
+                    class: "bb-list-row", "data-rpc": name,
+                    onpointerenter: (event) => event.pointerType !== "touch" && this.handlers.onTip(tip(), event),
+                    onpointerleave: (event) => event.pointerType !== "touch" && this.handlers.onLeaveTip(),
+                    onclick: (event) => {
+                        this.handlers.onPick([], uses.map((use) => use.node))
+                        this.handlers.onTip(tip(), event)
+                    },
+                },
+                h("code", { class: "bb-list-name" }, name),
+                h("span", { class: "bb-list-uses" }, ...uses.map((use) => h("span", { class: `bb-use ${use.as}` }, use.as === "cancel" ? `${use.node} (cancel)` : use.node))),
+            )
+        }))
+        fill(this.streamList, Object.entries(streams).sort(([a], [b]) => a.localeCompare(b)).map(([stream, type]) => {
+            const values = [...model.streamValues.values()].filter((value) => value.stream === stream)
+            const triggers = model.edges.filter((edge) => edge.transition?.on === stream).map((edge) => edge.id)
+            const names = namesFor(model, {})
+            return h(
+                "div",
+                { class: "bb-list-row", onclick: () => triggers.length && this.handlers.onPick(triggers, []) },
+                h("code", { class: "bb-list-name" }, stream),
+                h("span", { class: "bb-list-type" }, type),
+                h(
+                    "span",
+                    { class: "bb-list-uses" },
+                    ...values.map((value) => h("span", { class: `pill pill-${names.kindOf(value.name)}`, "data-key": value.name, title: `.${value.field}` }, value.name)),
+                    triggers.length ? h("span", { class: "bb-use" }, `on: ${triggers.length} transition${triggers.length > 1 ? "s" : ""}`) : null,
+                ),
+            )
+        }))
+    }
+
+    /** While a call is out, its RPC's row says so. */
+    showCalls(step) {
+        const out = new Set(step.calls.map((call) => call.rpc))
+        for (const row of this.rpcList?.body.children ?? []) {
+            row.classList.toggle("busy", out.has(row.dataset.rpc))
+        }
     }
 
     toggle(id) {
@@ -154,12 +241,6 @@ export class BlackboardPanel {
         list("set by", (model.setters.get(key) ?? []).map(transition))
         const users = usersOf(model, key)
         sources.append(h("div", { class: "bb-src-title" }, "Transitions"), ...(users.length ? users.map(transition) : [h("span", { class: "bb-src-none" }, "None")]))
-        const editButton = group === "streams" || group === "vars"
-            ? h("button", { class: "bb-edit", type: "button", title: `set ${key}`, onclick: (click) => {
-                click.stopPropagation()
-                this.edit(key)
-            } }, "✎")
-            : null
         const names = namesFor(model, {})
         const line = h(
             "div",
@@ -167,7 +248,6 @@ export class BlackboardPanel {
             h("span", { class: "bb-row-caret" }, "▸"),
             h("span", { class: "bb-key" }, h("span", { class: `pill pill-${names.kindOf(key)}`, "data-key": key }, key)),
             preview,
-            editButton,
         )
         const element = h("div", { class: "bb-row", "data-key": key }, line, h("div", { class: "bb-detail" }, sources, full))
         element.classList.toggle("unused", this.used != null && !this.used.has(key))
@@ -189,7 +269,7 @@ export class BlackboardPanel {
 
     toggleRow(key) {
         const row = this.rows.get(key)
-        if (!row || row.editing) {
+        if (!row) {
             return
         }
         const open = !this.expanded.has(key)
@@ -236,9 +316,6 @@ export class BlackboardPanel {
             if (!row) {
                 row = this.addRow(groupOf(this.model, key), key)
             }
-            if (row.editing) {
-                continue
-            }
             const text = JSON.stringify(value)
             if (row.last !== text) {
                 row.last = text
@@ -255,7 +332,7 @@ export class BlackboardPanel {
             row.element.classList.remove("unset")
         }
         for (const [key, row] of this.rows) {
-            if (!(key in step.blackboard) && !row.editing && row.last !== null) {
+            if (!(key in step.blackboard) && row.last !== null) {
                 row.element.classList.add("unset")
                 row.last = null // drawn as unset (undefined: not drawn yet)
                 row.value = undefined
@@ -274,6 +351,7 @@ export class BlackboardPanel {
             }
         }
         this.showFlight(step, flash)
+        this.showCalls(step)
     }
 
     /** The calls under way and the latest transition, above the groups. */
@@ -294,52 +372,6 @@ export class BlackboardPanel {
             void this.flight.offsetWidth
             this.flight.classList.add("changed")
         }
-    }
-
-    edit(key) {
-        const row = this.rows.get(key)
-        if (!this.editable || !row || row.editing) {
-            return
-        }
-        row.editing = true
-        const current = this.step && key in this.step.blackboard ? JSON.stringify(this.step.blackboard[key]) : ""
-        const input = h("input", { class: "bb-input", value: current, spellcheck: "false", "aria-label": `new value of ${key}` })
-        const done = () => {
-            row.editing = false
-            row.last = undefined
-            row.drawn = undefined
-            this.show(this.step, false, this.modules)
-        }
-        const submit = async () => {
-            let value
-            try {
-                value = JSON.parse(input.value)
-            } catch {
-                value = input.value
-            }
-            input.disabled = true
-            try {
-                await this.handlers.onEdit(key, value)
-            } finally {
-                done()
-            }
-        }
-        input.addEventListener("keydown", (event) => {
-            if (event.key === "Enter") {
-                submit()
-            } else if (event.key === "Escape") {
-                done()
-            }
-        })
-        const send = h("button", { class: "bb-send", type: "button", onclick: submit }, "set")
-        row.preview.replaceChildren(h("div", { class: "bb-editor", onclick: (click) => click.stopPropagation() }, input, send))
-        input.focus()
-        input.select()
-    }
-
-    setEditable(editable) {
-        this.editable = editable
-        this.container.classList.toggle("read-only", !editable)
     }
 
     publisher(key) {
