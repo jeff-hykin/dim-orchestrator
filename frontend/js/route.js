@@ -143,7 +143,11 @@ export function route(start, startDir, goals, obstacles, region, used) {
             continue
         }
         for (const goal of goalAt.get(`${i},${j}`) ?? []) {
-            const total = cost + goal.cost + (goal.dir === d ? 0 : (goal.dir + 2) % 4 === d ? 2 * TURN : TURN)
+            // never arriving head-on the wrong way: that would double back on itself into the target
+            if ((goal.dir + 2) % 4 === d) {
+                continue
+            }
+            const total = cost + goal.cost + (goal.dir === d ? 0 : TURN)
             heap.push(total, { done: true, at })
         }
         for (let nd = 0; nd < 4; nd++) {

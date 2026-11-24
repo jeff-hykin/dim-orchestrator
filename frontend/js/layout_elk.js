@@ -8,6 +8,9 @@ import { ROW, stacked, stackOf, stackTop } from "./stack.js"
 
 const elk = new ELK({ workerUrl: new URL("../vendor/elk/elk-worker.min.js", import.meta.url).href })
 
+// room between nodes, wide enough for several edges to run through
+const SPACING = { "elk.spacing.nodeNode": "40", "elk.layered.spacing.nodeNodeBetweenLayers": "64" }
+
 export const ELK_ROUTINGS = { "elk-splines": "SPLINES", "elk-polyline": "POLYLINE" }
 
 /**
@@ -62,6 +65,8 @@ async function run(model, measure, labelWidth, style, direction) {
             element.layoutOptions["elk.padding"] = `[top=${head + PAD + corner},left=${PAD + corner},bottom=${PAD},right=${PAD}]`
             element.layoutOptions["elk.nodeSize.constraints"] = "MINIMUM_SIZE"
             element.layoutOptions["elk.nodeSize.minimum"] = `(${size.w}, ${head + PAD})`
+            // ELK takes spacing from each container, not from the root: room between nodes for edges to route through
+            Object.assign(element.layoutOptions, SPACING)
         } else {
             element.width = size.w
             element.height = size.h
@@ -91,8 +96,7 @@ async function run(model, measure, labelWidth, style, direction) {
         "elk.edgeRouting": ELK_ROUTINGS[style],
         "elk.edgeLabels.placement": "CENTER",
         "elk.layered.edgeLabels.centerLabelPlacementStrategy": "TAIL_LAYER",
-        "elk.spacing.nodeNode": "28",
-        "elk.layered.spacing.nodeNodeBetweenLayers": "36",
+        ...SPACING,
         "elk.spacing.edgeNode": "14",
         "elk.spacing.edgeEdge": "10",
         "elk.layered.spacing.edgeNodeBetweenLayers": "14",

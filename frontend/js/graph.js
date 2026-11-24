@@ -4,7 +4,7 @@
 import { namesFor } from "./details.js"
 import { boundaryPoint, edgeShape, HEADER, labelBox, layoutGraph, PAD, sampleSegments, segmentsPath } from "./layout.js"
 import { layoutElk } from "./layout_elk.js"
-import { route } from "./route.js"
+import { route, simplify } from "./route.js"
 import { LEAD, portOf, ROW, stacked, stackOf, stackTop } from "./stack.js"
 
 // how the graph is laid out and its edges drawn: our own nested layout with curves, or ELK with one of its routings
@@ -25,8 +25,11 @@ const dot = (cx, cy, r, className, parent) => svg("rect", { x: cx - r, y: cy - r
 
 // container colors: blends of the skin's own colors, kept apart from the kind colors (vars, stream values, ...), --primary
 // (the active state) and --danger (faults)
-/** A polyline as cubic segments, its corners rounded (radius up to `radius`, less where the legs are short). */
-function roundedSegments(points, radius = 10) {
+/**
+ * A polyline as cubic segments, its corners rounded (radius up to `radius`, less where the legs are short, and less
+ * where a wider swing would come within PADDING of one of `blockers`).
+ */
+function roundedSegments(points, radius = 10, blockers = []) {
     const clean = points.filter((point, i) => i === 0 || Math.hypot(point.x - points[i - 1].x, point.y - points[i - 1].y) > 0.5)
     const line = (a, b) => [a, a, b, b]
     if (clean.length < 3) {
@@ -41,8 +44,11 @@ function roundedSegments(points, radius = 10) {
             const length = Math.hypot(to.x - from.x, to.y - from.y) || 1
             return { x: from.x + ((to.x - from.x) / length) * d, y: from.y + ((to.y - from.y) / length) * d }
         }
-        const enter = toward(c, p, r)
-        const leave = toward(c, n, r)
+        let [enter, leave] = [toward(c, p, r), toward(c, n, r)]
+        for (let tighter = r; tighter > 4 && cuts([enter, c, c, leave], blockers, PADDING); ) {
+            tighter /= 1.5
+            ;[enter, leave] = [toward(c, p, tighter), toward(c, n, tighter)]
+        }
         segments.push(line(at, enter), [enter, c, c, leave])
         at = leave
     }
@@ -62,8 +68,57 @@ const EDGE_COLORS = [
     "color-mix(in oklch, var(--info) 50%, var(--accent-alt))",
 ]
 
-// how wide the Curves style's routed edges swing round their corners
+// how wide a routed edge swings round its corners when it falls back to rounded corners
 const CURVE_RADIUS = 44
+// how many times every edge is routed (each time with all the others in place)
+const PASSES = 4
+// how close a rounded corner may swing to a box it goes round
+const PADDING = 6
+
+/**
+ * A route of straight horizontal and vertical stretches as flowing curves: each vertical stretch becomes one S (or C)
+ * from the middle of the horizontal before it to the middle of the one after, level at both ends, so the edge leaves
+ * and arrives flat and swings between them along its lane. A last stretch that comes in from above or below eases into
+ * it. Where an S would cut across a box in `blockers`, that stretch keeps its rounded corners instead.
+ */
+/** Whether a cubic segment passes through any of `boxes` or within `margin` of one. */
+function cuts([p0, p1, p2, p3], boxes, margin = 2) {
+    for (let step = 1; step < 24; step++) {
+        const t = step / 24
+        const u = 1 - t
+        const x = u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x
+        const y = u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y
+        if (boxes.some((box) => x > box.x - margin && x < box.x + box.w + margin && y > box.y - margin && y < box.y + box.h + margin)) {
+            return true
+        }
+    }
+    return false
+}
+
+function flowSegments(points, blockers = []) {
+    const clean = simplify(points)
+    if (clean.length < 3) {
+        return roundedSegments(clean)
+    }
+    const segments = []
+    let at = clean[0]
+    for (let i = 1; i < clean.length; i++) {
+        const [a, b] = [clean[i - 1], clean[i]]
+        if (Math.abs(a.x - b.x) > 0.5) {
+            continue
+        }
+        // a vertical stretch at x = a.x: from `at` to the middle of the next horizontal stretch (or the very end)
+        const next = clean[i + 1]
+        const to = next ? { x: (b.x + next.x) / 2, y: b.y } : b
+        const curve = next ? [at, { x: a.x, y: at.y }, { x: a.x, y: to.y }, to] : [at, { x: a.x, y: at.y }, { x: a.x, y: (at.y + b.y) / 2 }, b]
+        segments.push(...(cuts(curve, blockers) ? roundedSegments([at, { x: a.x, y: at.y }, { x: a.x, y: to.y }, to], CURVE_RADIUS, blockers) : [curve]))
+        at = to
+    }
+    if (Math.hypot(at.x - clean.at(-1).x, at.y - clean.at(-1).y) > 0.5) {
+        segments.push([at, at, clean.at(-1), clean.at(-1)])
+    }
+    return segments
+}
 
 const HUES = [
     "color-mix(in oklch, var(--info) 55%, var(--ok))",
@@ -452,12 +507,15 @@ export class GraphView {
         const from = this.layout.rects.get(edge.from)
         const port = portOf(this.model, edge, from, stackTop(this.sizes.get(edge.from)))
         const lead = { x: port.x + LEAD, y: port.y }
-        if (this.style === "curves" || this.style === "arcs") {
-            // the same lanes either way (apart from other edges, crossing them as little as it can); Arcs swing round
-            // each corner as wide as its legs allow
+        if (this.style === "curves" || this.style === "arcs" || this.style === "elk-polyline") {
+            // the same lanes in each (apart from other edges, crossing them as little as it can); Arcs swing round each
+            // corner as wide as its legs allow, Corners (on ELK's placement of the nodes) keep them sharp
             const corners = this.routed?.get(edge.id) ?? this.routeAround(edge, lead)
             if (corners) {
-                return [[port, port, lead, lead], ...roundedSegments(corners, this.style === "arcs" ? Infinity : CURVE_RADIUS)]
+                if (this.style === "curves") {
+                    return flowSegments([port, ...corners], this.blockers(edge))
+                }
+                return [[port, port, lead, lead], ...roundedSegments(corners, this.style === "arcs" ? Infinity : 0, this.cornerBlockers(edge))]
             }
         }
         if (edge.from === edge.to) {
@@ -525,10 +583,6 @@ export class GraphView {
         const to = rects.get(edge.to)
         const toSize = this.sizes.get(edge.to)
         const box = to
-        // how far out from the target the last turn may come, so the arrowhead sits on a straight run
-        const gap = 30
-        const clamp = (value, low, high) => Math.min(high, Math.max(low, value))
-        const goals = []
         const self = edge.from === edge.to
         // an edge may come in anywhere along the left side, the top (clear of the name) or the bottom, spaced out, and
         // a spot another edge already comes in at costs extra, so arrowheads don't pile onto one point
@@ -538,23 +592,37 @@ export class GraphView {
         }
         this.used ??= { h: new Map(), v: new Map(), ends: [] }
         const taken = (end) => (this.used.ends.some((other) => Math.hypot(other.x - end.x, other.y - end.y) < 10) ? 400 : 0)
-        const offer = (goal) => goals.push({ ...goal, cost: goal.cost + taken({ x: goal.end.x ?? goal.x, y: goal.end.y ?? goal.y }) })
-        if (!self) {
-            for (const y of along(box.y + 8, box.y + box.h - 8, 14)) {
-                offer({ x: box.x - gap, y, dir: 0, cost: Math.abs(y - lead.y) * 0.2, end: { x: box.x - 3 } })
+        // `gap`: how far out from the target the last turn comes, so the arrowhead sits on a straight run
+        const goalsAt = (gap) => {
+            const goals = []
+            const offer = (goal) => goals.push({ ...goal, cost: goal.cost + taken({ x: goal.end.x ?? goal.x, y: goal.end.y ?? goal.y }) })
+            if (!self) {
+                for (const y of along(box.y + 8, box.y + box.h - 8, 14)) {
+                    offer({ x: box.x - gap, y, dir: 0, cost: Math.abs(y - lead.y) * 0.2, end: { x: box.x - 3 } })
+                }
+            }
+            const topX = box.x + (toSize?.titleW ?? 0) + 24
+            for (const x of self ? [box.x + box.w - 12] : topX < box.x + box.w - 8 ? along(topX, box.x + box.w - 12, 16) : []) {
+                offer({ x, y: box.y - gap, dir: 1, cost: 12, end: { y: box.y - 3 } })
+            }
+            for (const x of self ? [box.x + box.w / 2] : along(box.x + 12, box.x + box.w - 12, 16)) {
+                offer({ x, y: box.y + box.h + gap, dir: 3, cost: 12, end: { y: box.y + box.h + 3 } })
+            }
+            if (!self) {
+                offer({ x: box.x + box.w + gap, y: box.y + box.h - 7, dir: 2, cost: 90, end: { x: box.x + box.w + 3 } })
+            }
+            return goals
+        }
+        // the last turn 30px out, or 13px where the nodes sit too close for that
+        let goals = []
+        let corners = null
+        for (const gap of [30, 13]) {
+            goals = goalsAt(gap)
+            corners = route(lead, 0, goals, obstacles, region, this.used) ?? (held ? route(lead, 0, goals, obstacles, all, this.used) : null)
+            if (corners) {
+                break
             }
         }
-        const topX = box.x + (toSize?.titleW ?? 0) + 24
-        for (const x of self ? [box.x + box.w - 12] : topX < box.x + box.w - 8 ? along(topX, box.x + box.w - 12, 16) : []) {
-            offer({ x, y: box.y - gap, dir: 1, cost: 12, end: { y: box.y - 3 } })
-        }
-        for (const x of self ? [box.x + box.w / 2] : along(box.x + 12, box.x + box.w - 12, 16)) {
-            offer({ x, y: box.y + box.h + gap, dir: 3, cost: 12, end: { y: box.y + box.h + 3 } })
-        }
-        if (!self) {
-            offer({ x: box.x + box.w + gap, y: box.y + box.h - 7, dir: 2, cost: 90, end: { x: box.x + box.w + 3 } })
-        }
-        const corners = route(lead, 0, goals, obstacles, region, this.used) ?? (held ? route(lead, 0, goals, obstacles, all, this.used) : null)
         if (!corners) {
             return null
         }
@@ -566,13 +634,13 @@ export class GraphView {
     }
 
     /**
-     * Curves and Arcs: every stacked edge's route, worked out before any is drawn. Each is routed once in order, then
+     * Curves, Arcs and Corners: every stacked edge's route, worked out before any is drawn. Each is routed once in order, then
      * routed again with all the others in place (its own first route taken out), so an early edge isn't stuck with
      * the inner lane a later one needed: nested bends end up nested, not crossing.
      */
     routeAll() {
         this.routed = new Map()
-        if (this.style !== "curves" && this.style !== "arcs") {
+        if (!["curves", "arcs", "elk-polyline"].includes(this.style)) {
             return
         }
         const leads = new Map()
@@ -583,7 +651,7 @@ export class GraphView {
                 leads.set(edge, { x: port.x + LEAD, y: port.y })
             }
         }
-        for (let pass = 0; pass < 2; pass++) {
+        for (let pass = 0; pass < PASSES; pass++) {
             for (const [edge, lead] of leads) {
                 const before = this.routed.get(edge.id)
                 if (before) {
@@ -657,15 +725,25 @@ export class GraphView {
         }
     }
 
-    /** Whether a drawn edge runs through the box of a node it neither starts in, ends in, nor sits inside. */
-    crossesNode(edge, path) {
+    /** The boxes an edge must not run through: every node it neither starts in, ends in, nor sits inside. */
+    blockers(edge) {
         const skip = new Set([edge.from, edge.to])
         for (const id of [edge.from, edge.to]) {
             for (let at = this.model.nodes.get(id)?.parent; at != null; at = this.model.nodes.get(at)?.parent) {
                 skip.add(at)
             }
         }
-        const boxes = [...this.layout.rects].filter(([id]) => !skip.has(id)).map(([, rect]) => rect)
+        return [...this.layout.rects].filter(([id]) => !skip.has(id)).map(([, rect]) => rect)
+    }
+
+    /** What a rounded corner keeps clear of: the blockers, and the boxes the edge leaves and enters too. */
+    cornerBlockers(edge) {
+        return [...this.blockers(edge), ...[edge.from, edge.to].map((id) => this.layout.rects.get(id)).filter(Boolean)]
+    }
+
+    /** Whether a drawn edge runs through the box of a node it neither starts in, ends in, nor sits inside. */
+    crossesNode(edge, path) {
+        const boxes = this.blockers(edge)
         const length = path.getTotalLength()
         for (let along = 0; along <= length; along += 3) {
             const p = path.getPointAtLength(along)
@@ -691,7 +769,7 @@ export class GraphView {
             const start = { x: box.x + 6, y: box.y + (this.sizes.get(edge.node)?.head ?? 0) + 6 }
             const end = boundaryPoint(to, start, 3)
             d = `M${start.x},${start.y} L${end.x.toFixed(1)},${end.y.toFixed(1)}`
-        } else if (stacked(edge) && !this.layout.paths) {
+        } else if (stacked(edge) && (!this.layout.paths || this.style === "elk-polyline")) {
             if (!to || !this.layout.rects.get(edge.from)) {
                 return
             }
@@ -726,13 +804,13 @@ export class GraphView {
         }
         const path = svg("path", { d, class: "edge-line" }, group)
         const hit = svg("path", { d, class: "edge-hit" }, group)
-        if (this.style !== "curves" && edge.kind !== "initial" && stacked(edge) && this.crossesNode(edge, path)) {
-            // an arc or spline that would run over a node takes the routed way around instead
+        if (edge.kind !== "initial" && stacked(edge) && this.crossesNode(edge, path)) {
+            // an edge whose curve would run over a node takes the routed way round it, with rounded corners
             const start = path.getPointAtLength(0)
             const lead = { x: start.x + LEAD, y: start.y }
-            const corners = this.routeAround(edge, lead)
+            const corners = this.routed?.get(edge.id) ?? this.routeAround(edge, lead)
             if (corners) {
-                d = segmentsPath([[start, start, lead, lead], ...roundedSegments(corners)])
+                d = segmentsPath([[start, start, lead, lead], ...roundedSegments(corners, CURVE_RADIUS, this.cornerBlockers(edge))])
                 path.setAttribute("d", d)
                 hit.setAttribute("d", d)
             }
