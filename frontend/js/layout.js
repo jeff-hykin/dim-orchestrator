@@ -12,14 +12,18 @@ export const HEADER = 30
  * @param {(edge: import("./model.js").GraphEdge) => number} labelWidth how wide an edge's label is
  * @returns {{ rects: Map<string, {x: number, y: number, w: number, h: number}>, routes: Map<string, {x: number, y: number}[]>, width: number, height: number }}
  */
-export function layoutGraph(model, measure, labelWidth = () => 0, aspect = 1.6, arcs = false) {
+export function layoutGraph(model, measure, labelWidth = () => 0, aspect = 1.6, arcs = false, across = false) {
     // Inner nodes aim for one shape (square, wide or tall); keep whichever lets the whole graph fill the screen most.
+    // `across`: every container left to right (dimos-react's Hierarchy), however it fits.
+    if (across) {
+        return layoutWith(model, measure, labelWidth, aspect, 1, arcs, true)
+    }
     const tries = [1, 2.5, 0.5].map((innerAspect) => layoutWith(model, measure, labelWidth, aspect, innerAspect, arcs))
     const fill = (found) => Math.min(aspect / found.width, 1 / found.height)
     return tries.reduce((best, found) => (fill(found) > fill(best) * 1.02 ? found : best))
 }
 
-function layoutWith(model, measure, labelWidth, aspect, innerAspect, arcs) {
+function layoutWith(model, measure, labelWidth, aspect, innerAspect, arcs, acrossOnly = false) {
     const local = new Map() // id -> { w, h, place: Map<childId, {x, y}> (centres, content-relative), routes }
     const childOf = (compound, id) => {
         let at = id
@@ -65,7 +69,8 @@ function layoutWith(model, measure, labelWidth, aspect, innerAspect, arcs) {
         }
         // Lay the inside out left-to-right and top-to-bottom, and keep the one closer to the screen's shape.
         const widest = Math.max(0, ...linkEdges.map((edgeId) => labelWidth(model.edgeById.get(edgeId))))
-        const across = layered(boxes, links, { layerGap: Math.min(240, Math.max(70, widest + 36)), nodeGap: 30 })
+        // dimos-react's own gaps for its Hierarchy
+        const across = layered(boxes, links, acrossOnly ? { layerGap: 90, nodeGap: 22 } : { layerGap: Math.min(240, Math.max(70, widest + 36)), nodeGap: 30 })
         const flip = (point) => ({ x: point.y, y: point.x })
         const downRaw = layered(boxes.map((box) => ({ ...box, w: box.h, h: box.w })), links, { layerGap: 66, nodeGap: Math.max(36, Math.min(160, widest * 0.5)) })
         const down = {
@@ -109,7 +114,7 @@ function layoutWith(model, measure, labelWidth, aspect, innerAspect, arcs) {
             const h = Math.max(1, b.y1 - b.y0) + PAD * 2 + head
             return id === model.root ? -Math.min(aspect / w, 1 / h) : Math.abs(Math.log(w / h / innerAspect))
         }
-        const placement = misfit(down) < misfit(across) ? down : across
+        const placement = !acrossOnly && misfit(down) < misfit(across) ? down : across
         let { x0: minX, y0: minY, x1: maxX, y1: maxY } = bounds(placement)
         const shift = (point) => ({ x: point.x - minX + PAD + corner, y: point.y - minY + PAD + head + corner })
         const place = new Map(boxes.map((box) => [box.id, shift(placement.positions.get(box.id))]))

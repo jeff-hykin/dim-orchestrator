@@ -8,7 +8,7 @@ import { route, simplify } from "./route.js"
 import { LEAD, portOf, ROW, stacked, stackOf, stackTop } from "./stack.js"
 
 // how the graph is laid out and its edges drawn: our own nested layout with curves, or ELK with one of its routings
-export const LAYOUT_STYLES = { curves: "Curves", arcs: "Arcs", "elk-polyline": "Corners", "elk-splines": "Splines" }
+export const LAYOUT_STYLES = { hierarchy: "Hierarchy", curves: "Curves", arcs: "Arcs", "elk-polyline": "Corners", "elk-splines": "Splines" }
 
 const SVG = "http://www.w3.org/2000/svg"
 const svg = (tag, attrs = {}, parent) => {
@@ -70,6 +70,38 @@ const EDGE_COLORS = [
 
 // how wide a routed edge swings round its corners when it falls back to rounded corners
 const CURVE_RADIUS = 44
+// Hierarchy: the smallest zoom fitting it picks (dimos-react's)
+const HIERARCHY_MIN_ZOOM = 0.8
+// Hierarchy: how far apart the edges coming into one node arrive
+const ARRIVAL_STEP = 10
+
+/**
+ * Hierarchy's edge, as dimos-react's flowPath draws it: level out of `a` and level into `b`; with bends (the layered
+ * layout's dummy points between its layers), along the middle one's height, swinging onto it and off it; without, one S.
+ */
+function flowCurve(a, b, bends, under) {
+    if (!bends.length && b.x < a.x) {
+        // back to the left with nothing between: round under both boxes rather than looping through them
+        bends = [{ x: (a.x + b.x) / 2, y: under }]
+    }
+    if (!bends.length) {
+        const half = Math.max(Math.abs(b.x - a.x) / 2, 30)
+        return [[a, { x: a.x + half, y: a.y }, { x: b.x - half, y: b.y }, b]]
+    }
+    const track = bends.map((p) => p.y).sort((m, n) => m - n)[Math.floor(bends.length / 2)]
+    const forward = b.x > a.x
+    const r = Math.max(32, Math.min(110, forward ? Math.abs(b.x - a.x) / 3 : 80))
+    const line = (p, q) => [p, p, q, q]
+    if (forward) {
+        const on = { x: a.x + r, y: track }
+        const off = { x: b.x - r, y: track }
+        return [[a, { x: a.x + r / 2, y: a.y }, { x: a.x + r / 2, y: track }, on], line(on, off), [off, { x: b.x - r / 2, y: track }, { x: b.x - r / 2, y: b.y }, b]]
+    }
+    const on = { x: a.x, y: track }
+    const off = { x: b.x, y: track }
+    return [[a, { x: a.x + r, y: a.y }, { x: a.x + r, y: track }, on], line(on, off), [off, { x: b.x - r, y: track }, { x: b.x - r, y: b.y }, b]]
+}
+
 // how many times every edge is routed (each time with all the others in place)
 const PASSES = 4
 // how close a rounded corner may swing to a box it goes round
@@ -321,7 +353,7 @@ export class GraphView {
         }
         let layout
         try {
-            layout = this.style === "curves" || this.style === "arcs" ? layoutGraph(model, measure, labelWidth, aspect, this.style === "arcs") : await layoutElk(model, measure, labelWidth, this.style, aspect)
+            layout = ["hierarchy", "curves", "arcs"].includes(this.style) ? layoutGraph(model, measure, labelWidth, aspect, this.style === "arcs", this.style === "hierarchy") : await layoutElk(model, measure, labelWidth, this.style, aspect)
         } catch (error) {
             console.warn(`${this.style} layout failed, using curves:`, error)
             layout = layoutGraph(model, measure, labelWidth, aspect)
@@ -367,6 +399,7 @@ export class GraphView {
             this.drawNode(nodeLayer, node, layout.rects.get(node.id))
         }
         this.routeAll()
+        this.arrivals = this.style === "hierarchy" ? this.spreadArrivals() : new Map()
         for (const edge of model.edges) {
             this.drawEdge(edgeLayer, labelLayer, edge)
         }
@@ -525,6 +558,11 @@ export class GraphView {
             return [[port, port, lead, lead], [lead, { x: lead.x + 12, y: lead.y }, { x: corner.x, y: corner.y + 10 }, corner], [corner, { x: corner.x - 10, y: corner.y - 8 }, { x: end.x, y: end.y - 14 }, end]]
         }
         const bends = this.layout.routes?.get(edge.id) ?? []
+        if (this.style === "hierarchy") {
+            const index = stackOf(this.model, edge.from).indexOf(edge)
+            const under = Math.max(from.y + from.h, to.y + to.h) + 24 + index * 8
+            return flowCurve(port, { x: to.x - 3, y: this.arrivals.get(edge.id) ?? to.y + to.h / 2 }, bends, under)
+        }
         const vertical = this.style === "arcs" ? (this.layout.vertical.get(edge.id) ?? false) : null
         const head = [port, port, lead, lead]
         if (to.x <= lead.x + 8) {
@@ -686,6 +724,35 @@ export class GraphView {
     }
 
     /**
+     * Hierarchy: where each edge comes into its target's left side. The edges into one node are spread down it, a
+     * little apart, in the order they come from (by the track they run along, else the row they leave), so they don't
+     * cross as they arrive.
+     */
+    spreadArrivals() {
+        const arrivals = new Map()
+        const into = new Map()
+        for (const edge of this.model.edges.filter((one) => stacked(one) && one.from !== one.to)) {
+            const from = this.layout.rects.get(edge.from)
+            const to = this.layout.rects.get(edge.to)
+            if (!from || !to) {
+                continue
+            }
+            const bends = this.layout.routes?.get(edge.id) ?? []
+            const comingFrom = bends.length ? bends.at(-1).y : portOf(this.model, edge, from, stackTop(this.sizes.get(edge.from))).y
+            into.set(edge.to, [...(into.get(edge.to) ?? []), { edge, comingFrom }])
+        }
+        for (const [id, list] of into) {
+            const to = this.layout.rects.get(id)
+            list.sort((a, b) => a.comingFrom - b.comingFrom)
+            const room = Math.max(0, to.h - 16)
+            const step = list.length > 1 ? Math.min(ARRIVAL_STEP, room / (list.length - 1)) : 0
+            const first = to.y + to.h / 2 - (step * (list.length - 1)) / 2
+            list.forEach(({ edge }, i) => arrivals.set(edge.id, first + i * step))
+        }
+        return arrivals
+    }
+
+    /**
      * The node under the pointer (or null). Read on the next frame, so moving from a container onto its child (a leave
      * then an enter) never closes the container in between.
      */
@@ -701,6 +768,10 @@ export class GraphView {
      */
     applyOpen() {
         const open = new Set([this.model.root])
+        // ?expand in the address: everything open (for looking over a whole layout)
+        if (new URLSearchParams(location.search).has("expand")) {
+            this.model.nodes.forEach((_, id) => open.add(id))
+        }
         for (let at = this.hovered; at != null; at = this.model.nodes.get(at)?.parent) {
             open.add(at)
         }
@@ -804,7 +875,7 @@ export class GraphView {
         }
         const path = svg("path", { d, class: "edge-line" }, group)
         const hit = svg("path", { d, class: "edge-hit" }, group)
-        if (edge.kind !== "initial" && stacked(edge) && this.crossesNode(edge, path)) {
+        if (this.style !== "hierarchy" && edge.kind !== "initial" && stacked(edge) && this.crossesNode(edge, path)) {
             // an edge whose curve would run over a node takes the routed way round it, with rounded corners
             const start = path.getPointAtLength(0)
             const lead = { x: start.x + LEAD, y: start.y }
@@ -1078,10 +1149,16 @@ export class GraphView {
         const drawn = this.world.getBBox()
         const margin = 16
         const bottom = 52 // the edge-style setting sits in the bottom-left corner
-        const k = Math.min(2, (box.width - margin * 2) / Math.max(1, drawn.width), (box.height - margin - bottom) / Math.max(1, drawn.height))
+        const fitHeight = (box.height - margin - bottom) / Math.max(1, drawn.height)
+        let k = Math.min(2, (box.width - margin * 2) / Math.max(1, drawn.width), fitHeight)
+        // a wide Hierarchy scrolls rather than shrinking to nothing (as dimos-react's does), starting from its left
+        if (this.style === "hierarchy") {
+            k = Math.max(k, Math.min(fitHeight, HIERARCHY_MIN_ZOOM))
+        }
+        const wide = drawn.width * k > box.width - margin * 2
         this.view = {
             k,
-            x: (box.width - drawn.width * k) / 2 - drawn.x * k,
+            x: wide ? margin - drawn.x * k : (box.width - drawn.width * k) / 2 - drawn.x * k,
             y: margin + (box.height - margin - bottom - drawn.height * k) / 2 - drawn.y * k,
         }
         this.apply()
