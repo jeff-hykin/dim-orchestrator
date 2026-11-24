@@ -151,7 +151,7 @@ export class BlackboardPanel {
         }
         fill(this.rpcList, Object.entries(rpcs).sort(([a], [b]) => a.localeCompare(b)).map(([name, info]) => {
             const uses = nodesRunning(name)
-            const tip = () => h("div", { class: "rpc-tip" }, h("code", { class: "rpc-sig" }, `${name}${(info.signature ?? "(…)").replace(/^\(self,?\s*/, "(")}`), h("div", { class: "rpc-doc" }, info.doc?.trim() || "No docstring."))
+            const tip = () => h("div", { class: "rpc-tip" }, h("code", { class: "rpc-sig" }, `${name}${(info.signature ?? "(…)").replace(/^\(self,?\s*/, "(")}`), h("div", { class: "rpc-doc" }, info.doc?.trim().split(/\n\s*\n/).map((paragraph) => paragraph.replace(/\s*\n\s*/g, " ")).join("\n\n") || "No docstring."))
             return h(
                 "div",
                 {

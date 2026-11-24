@@ -7,7 +7,7 @@ import { ready as celReady } from "./cel.js"
 import { edgeDetails, namesFor, nodeDetails, valueDetails } from "./details.js"
 import { GraphView, LAYOUT_STYLES } from "./graph.js"
 import { History } from "./history.js"
-import { SourceView } from "./source.js"
+import { definitionToToml, SourceView } from "./source.js"
 import { buildModel, edgeForRecord } from "./model.js"
 import { Timeline } from "./timeline.js"
 
@@ -488,7 +488,7 @@ async function followStream(moduleId, generation) {
                 showFile(message.definition, moduleId)
                 app.moduleId = moduleId
                 app.clockOffset = 0
-                source.setSource(app.file, "")
+                source.setSource(app.file, definitionToToml(message.definition))
                 source.setNames(namesFor(app.model, {}))
                 setStatus("connected")
                 caughtUp = false

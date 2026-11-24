@@ -2,7 +2,7 @@
 
 import { h } from "./details.js"
 import { highlightOrchestratorYaml } from "./yaml_highlight.js"
-import { isScalar, parseToml, visitYaml, YamlDocument } from "../vendor/formats/formats.js"
+import { isScalar, parseToml, stringifyToml, visitYaml, YamlDocument } from "../vendor/formats/formats.js"
 
 /** TOML text as YAML, lists of plain values kept on one line. */
 export function tomlToYaml(source) {
@@ -32,6 +32,24 @@ function paintTokens(source, token, kinds) {
 /** TOML as colored spans: comments, [tables], keys, strings (CEL inside them stays a string), numbers, booleans. */
 export function highlightToml(source) {
     return paintTokens(source, /(#[^\n]*)|("""[\s\S]*?(?:"""|$)|'''[\s\S]*?(?:'''|$)|"(?:[^"\\\n]|\\.)*"?|'[^'\n]*'?)|(^[ \t]*\[\[?[^\]\n]*\]\]?)|(^[ \t]*[A-Za-z0-9_.-]+(?=[ \t]*=))|\b(true|false)\b|(-?\b\d[\d_]*(?:\.\d+)?(?:[eE][+-]?\d+)?\b)/gm, ["t-com", "t-str", "t-table", "t-key", "t-bool", "t-num"])
+}
+
+/** A definition (as orchestrator_state carries it) written back as its file: the loader's tables under their file
+ * names, and fields left at their defaults (null, empty) dropped. Comments are not in the definition, so none come back. */
+export function definitionToToml(definition) {
+    const tables = { stream_values: "stream_value", activities: "activity", nodes: "node" }
+    const trimmed = (value) => {
+        if (Array.isArray(value)) {
+            return value.map(trimmed)
+        }
+        if (value && typeof value === "object") {
+            const kept = Object.entries(value).filter(([, each]) => each != null && !(Array.isArray(each) && !each.length) && !(typeof each === "object" && !Array.isArray(each) && !Object.keys(each).length))
+            return Object.fromEntries(kept.map(([key, each]) => [key, trimmed(each)]))
+        }
+        return value
+    }
+    const file = trimmed(Object.fromEntries(Object.entries(definition).map(([key, value]) => [tables[key] ?? key, value])))
+    return stringifyToml(file)
 }
 
 export class SourceView {
