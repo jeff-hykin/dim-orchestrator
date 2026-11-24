@@ -1969,6 +1969,7 @@ span.bb-link {
 
 .node-conditions.shown .row-words,
 .row-words.picked,
+.row-words.lit,
 .node:hover .stack-divider {
     opacity: 1;
 }

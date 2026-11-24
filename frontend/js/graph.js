@@ -720,8 +720,15 @@ export class GraphView {
         }
         this.edgeEls.set(edge.id, { group, path, label: labelGroup })
         // on an edge inside a container, the container stays open
-        group.addEventListener("pointerenter", () => this.hover(edge.from ?? edge.node ?? null))
-        group.addEventListener("pointerleave", () => this.hover(null))
+        // hovered, its condition shows in its row (over the edges), and the container around it stays open
+        group.addEventListener("pointerenter", () => {
+            this.conditionEls.get(edge.id)?.classList.add("lit")
+            this.hover(edge.from ?? edge.node ?? null)
+        })
+        group.addEventListener("pointerleave", () => {
+            this.conditionEls.get(edge.id)?.classList.remove("lit")
+            this.hover(null)
+        })
     }
 
     /** Write a label's text, with each blackboard name in it drawn in its kind's color (as in the blackboard). */
