@@ -311,6 +311,8 @@ export class GraphView {
         for (const edge of model.edges) {
             this.drawEdge(edgeLayer, labelLayer, edge)
         }
+        this.hovered = null
+        this.applyOpen()
         this.userMoved = false
         this.fit()
         if (this.lastShown) {
@@ -334,10 +336,10 @@ export class GraphView {
             const bare = node.id === this.model.root
             group.classList.toggle("node-root", bare)
             svg("rect", { x: rect.x, y: rect.y, width: rect.w, height: rect.h, class: "box compound-box" }, group)
-            if (head > TITLE) {
-                svg("rect", { x: rect.x, y: rect.y + TITLE, width: rect.w, height: head - TITLE, class: "compound-head" }, group)
-            }
             svg("text", { x: rect.x + (bare ? 1 : 8), y: rect.y + TITLE - 6, class: "node-name", "font-size": size.font }, group).textContent = node.id
+            // closed (not hovered), it hides what is inside and shows just its name, in the middle
+            const centered = svg("text", { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2, class: "node-name name-centered", "text-anchor": "middle", "dominant-baseline": "middle", "font-size": Math.min(size.font * 1.6, rect.h * 0.6) }, group)
+            centered.textContent = node.id
             if (node.kind === "parallel") {
                 const tag = svg("g", { class: "parallel-tag" }, group)
                 const label = svg("text", { x: rect.x + rect.w - 4, y: rect.y + TITLE - 6, "text-anchor": "end", class: "tag-text" }, tag)
@@ -372,16 +374,16 @@ export class GraphView {
             dot(rect.x + rect.w - 6, rect.y + TITLE - 6 - size.font / 3, 4, "run-dot", group)
             svg("text", { x: rect.x + rect.w - 16, y: rect.y + TITLE - 6, "text-anchor": "end", class: "outcome-mark" }, group)
         }
-        // shown while the node is hovered, over every edge: its name above its box, and its conditions
+        // its conditions, shown while it is hovered, over every edge
         const overlay = svg("g", { class: "node-conditions" }, this.conditionLayer)
-        overlay.style.setProperty("--hue", group.style.getPropertyValue("--hue"))
-        group.addEventListener("pointerenter", () => overlay.classList.add("shown"))
-        group.addEventListener("pointerleave", () => overlay.classList.remove("shown"))
-        if (node.kind !== "final" && node.id !== this.model.root) {
-            const name = svg("g", { class: `name-float name-float-${node.kind}` }, overlay)
-            svg("rect", { class: "name-float-bg", x: rect.x, y: rect.y - TITLE - 2, width: (size.titleW ?? 0) + 16, height: TITLE }, name)
-            svg("text", { x: rect.x + 8, y: rect.y - 9, class: "node-name", "font-size": size.font }, name).textContent = node.id
-        }
+        group.addEventListener("pointerenter", () => {
+            overlay.classList.add("shown")
+            this.hover(node.id)
+        })
+        group.addEventListener("pointerleave", () => {
+            overlay.classList.remove("shown")
+            this.hover(null)
+        })
         this.drawStack(group, node, rect, overlay)
         // a countdown under the node, on its own small backing so it reads over lines and container fills
         const timerBg = svg("rect", { class: "timer-bg", visibility: "hidden" }, group)
@@ -539,6 +541,46 @@ export class GraphView {
         return [lead, ...corners.slice(1), { x: goal.end.x ?? last.x, y: goal.end.y ?? last.y }]
     }
 
+    /**
+     * The node under the pointer (or null). Read on the next frame, so moving from a container onto its child (a leave
+     * then an enter) never closes the container in between.
+     */
+    hover(id) {
+        this.hovered = id
+        cancelAnimationFrame(this.openFrame)
+        this.openFrame = requestAnimationFrame(() => this.applyOpen())
+    }
+
+    /**
+     * Containers are closed (their name in the middle, what is inside hidden) except the hovered node's and the ones
+     * around it, and the outermost. An edge hides when both its ends are hidden.
+     */
+    applyOpen() {
+        const open = new Set([this.model.root])
+        for (let at = this.hovered; at != null; at = this.model.nodes.get(at)?.parent) {
+            open.add(at)
+        }
+        const hidden = (id) => {
+            for (let at = this.model.nodes.get(id)?.parent; at != null; at = this.model.nodes.get(at)?.parent) {
+                if (!open.has(at)) {
+                    return true
+                }
+            }
+            return false
+        }
+        for (const [id, element] of this.nodeEls) {
+            const node = this.model.nodes.get(id)
+            element.classList.toggle("closed", (node?.kind === "compound" || node?.kind === "parallel") && !open.has(id))
+            element.classList.toggle("tucked", hidden(id))
+        }
+        for (const edge of this.model.edges) {
+            const element = this.edgeEls.get(edge.id)
+            const tucked = edge.kind === "initial" ? hidden(edge.to) : hidden(edge.from) && hidden(edge.to)
+            element?.group.classList.toggle("tucked", tucked)
+            element?.label?.classList.toggle("tucked", tucked)
+        }
+    }
+
     /** Whether a drawn edge runs through the box of a node it neither starts in, ends in, nor sits inside. */
     crossesNode(edge, path) {
         const skip = new Set([edge.from, edge.to])
@@ -668,6 +710,9 @@ export class GraphView {
             })
         }
         this.edgeEls.set(edge.id, { group, path, label: labelGroup })
+        // on an edge inside a container, the container stays open
+        group.addEventListener("pointerenter", () => this.hover(edge.from ?? edge.node ?? null))
+        group.addEventListener("pointerleave", () => this.hover(null))
     }
 
     /** Write a label's text, with each blackboard name in it drawn in its kind's color (as in the blackboard). */

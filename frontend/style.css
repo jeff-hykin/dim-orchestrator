@@ -218,8 +218,7 @@ svg.graph:active {
 }
 
 /* ---------------------------------------------------------------- graph */
-.compound-box,
-.compound-head {
+.compound-box {
     rx: var(--radius-lg);
 }
 
@@ -227,7 +226,7 @@ svg.graph:active {
     rx: 0;
 }
 
-/* a container wears its own theme hue (--hue, set per node): a faint wash, a tinted border and header */
+/* a container wears its own theme hue (--hue, set per node): a faint wash and a tinted border */
 .compound-box {
     fill: var(--hue, var(--fg));
     fill-opacity: 0.06;
@@ -235,11 +234,6 @@ svg.graph:active {
     stroke-width: 1.2;
 }
 
-.compound-head {
-    fill: var(--hue, var(--fg));
-    fill-opacity: 0.12;
-    stroke: none;
-}
 
 .node-compound > .node-name,
 .node-parallel > .node-name {
@@ -363,10 +357,6 @@ svg.graph:active {
     fill-opacity: 0.1;
 }
 
-.node.active > .compound-head {
-    fill: var(--hue, var(--primary));
-    fill-opacity: 0.22;
-}
 
 .node-final.active .final-ring {
     stroke: var(--ok);
@@ -1947,9 +1937,8 @@ span.bb-link {
     fill: var(--edge-color, var(--muted-fg));
 }
 
-/* the one outermost node is the whole drawing: no wash, border or header band */
-.node.node-root > .compound-box,
-.node.node-root > .compound-head {
+/* the one outermost node is the whole drawing: no wash or border */
+.node.node-root > .compound-box {
     display: none;
 }
 
@@ -1984,26 +1973,19 @@ span.bb-link {
     opacity: 1;
 }
 
-/* a node's name sits inside its box; hovered, it shows above the box instead, over the edges */
-.name-float {
+/* a container shows just its name, in the middle, until it (or something inside it) is hovered */
+.name-centered {
+    display: none;
+}
+
+.node.closed > .name-centered {
+    display: inline;
+}
+
+.node.closed > .node-name:not(.name-centered) {
     opacity: 0;
-    transition: opacity 0.12s;
 }
 
-.name-float-bg {
-    fill: var(--raised);
-    stroke: var(--border-strong);
-}
-
-.name-float-compound .node-name,
-.name-float-parallel .node-name {
-    fill: color-mix(in srgb, var(--hue, var(--fg)) 70%, var(--fg));
-}
-
-.node-conditions.shown .name-float {
-    opacity: 1;
-}
-
-.node:not(.node-root):hover > .node-name {
-    opacity: 0;
+.tucked {
+    visibility: hidden;
 }
