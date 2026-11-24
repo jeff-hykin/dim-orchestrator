@@ -311,6 +311,7 @@ export class GraphView {
         for (const node of ordered.filter((one) => one.kind !== "start")) {
             this.drawNode(nodeLayer, node, layout.rects.get(node.id))
         }
+        this.routeAll()
         for (const edge of model.edges) {
             this.drawEdge(edgeLayer, labelLayer, edge)
         }
@@ -454,7 +455,7 @@ export class GraphView {
         if (this.style === "curves" || this.style === "arcs") {
             // the same lanes either way (apart from other edges, crossing them as little as it can); Arcs swing round
             // each corner as wide as its legs allow
-            const corners = this.routeAround(edge, lead)
+            const corners = this.routed?.get(edge.id) ?? this.routeAround(edge, lead)
             if (corners) {
                 return [[port, port, lead, lead], ...roundedSegments(corners, this.style === "arcs" ? Infinity : CURVE_RADIUS)]
             }
@@ -562,6 +563,58 @@ export class GraphView {
         const end = { x: goal.end.x ?? last.x, y: goal.end.y ?? last.y }
         this.used.ends.push(end)
         return [lead, ...corners.slice(1), end]
+    }
+
+    /**
+     * Curves and Arcs: every stacked edge's route, worked out before any is drawn. Each is routed once in order, then
+     * routed again with all the others in place (its own first route taken out), so an early edge isn't stuck with
+     * the inner lane a later one needed: nested bends end up nested, not crossing.
+     */
+    routeAll() {
+        this.routed = new Map()
+        if (this.style !== "curves" && this.style !== "arcs") {
+            return
+        }
+        const leads = new Map()
+        for (const edge of this.model.edges.filter((one) => stacked(one) && one.kind === "transition")) {
+            const from = this.layout.rects.get(edge.from)
+            if (from && this.layout.rects.get(edge.to)) {
+                const port = portOf(this.model, edge, from, stackTop(this.sizes.get(edge.from)))
+                leads.set(edge, { x: port.x + LEAD, y: port.y })
+            }
+        }
+        for (let pass = 0; pass < 2; pass++) {
+            for (const [edge, lead] of leads) {
+                const before = this.routed.get(edge.id)
+                if (before) {
+                    this.forget(before)
+                }
+                const corners = this.routeAround(edge, lead)
+                if (corners) {
+                    this.routed.set(edge.id, corners)
+                } else {
+                    this.routed.delete(edge.id)
+                }
+            }
+        }
+    }
+
+    /** Take a route's stretches and its arrival spot back out of what later routes keep clear of. */
+    forget(points) {
+        const end = points.at(-1)
+        this.used.ends = this.used.ends.filter((other) => other !== end)
+        // the stretches route() recorded: between its corners, which stop at the goal (the last point is the arrival)
+        const corners = points.slice(0, -1)
+        for (let n = 1; n < corners.length; n++) {
+            const [a, b] = [corners[n - 1], corners[n]]
+            const [lines, at, span] = a.y === b.y ? [this.used.h, a.y, [a.x, b.x]] : [this.used.v, a.x, [a.y, b.y]]
+            const [low, high] = span.sort((m, k) => m - k)
+            const spans = lines.get(at) ?? []
+            const index = spans.findIndex(([m, k]) => m === low && k === high)
+            if (index >= 0) {
+                spans.splice(index, 1)
+            }
+        }
     }
 
     /**
