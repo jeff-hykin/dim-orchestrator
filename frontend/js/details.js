@@ -211,7 +211,7 @@ function transitionLine(transition, cel) {
         transition.on != null ? h("span", { class: "d-kw" }, "on ", mono(transition.on), " ") : null,
         transition.after != null ? h("span", { class: "d-kw" }, "after ", cel(transition.after), "s ") : null,
         transition.if != null ? h("span", { class: "d-kw" }, "if ", cel(transition.if), " ") : null,
-        transition.on == null && transition.after == null && transition.if == null ? h("span", { class: "d-kw" }, "always ") : null,
+        transition.on == null && transition.after == null && transition.if == null ? h("span", { class: "d-kw" }, "else ") : null,
         "→ ",
         mono(transition.goto),
         transition.mode === "immediate" ? h("span", { class: "d-chip immediate" }, "⚡ immediate") : null,

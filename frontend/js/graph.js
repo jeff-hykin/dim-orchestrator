@@ -138,7 +138,7 @@ export function edgeLabel(edge, length = 34) {
         parts.push(`if ${transition.if}`)
     }
     if (!parts.length) {
-        parts.push("always")
+        parts.push("else")
     }
     return short(parts.join(" "), length)
 }

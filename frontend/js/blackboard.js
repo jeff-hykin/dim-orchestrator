@@ -237,7 +237,7 @@ export class BlackboardPanel {
         )
         const latest = transitions.at(-1)
         const banner = latest
-            ? h("div", { class: "bb-latest" }, h("span", { class: "bb-latest-from" }, latest.node), " → ", h("strong", {}, latest.goto), h("span", { class: "bb-latest-cause" }, latest.cause ?? "always"))
+            ? h("div", { class: "bb-latest" }, h("span", { class: "bb-latest-from" }, latest.node), " → ", h("strong", {}, latest.goto), h("span", { class: "bb-latest-cause" }, latest.cause ?? "else"))
             : null
         const fault = faults.length ? h("div", { class: "bb-fault" }, `fault in ${faults[0].node}: ${faults[0].rule}`) : null
         this.flight.replaceChildren(...[fault, banner, calls.length ? h("div", { class: "bb-calls" }, ...calls) : null].filter(Boolean))
