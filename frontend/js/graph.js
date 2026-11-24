@@ -529,25 +529,39 @@ export class GraphView {
         const clamp = (value, low, high) => Math.min(high, Math.max(low, value))
         const goals = []
         const self = edge.from === edge.to
+        // an edge may come in anywhere along the left side, the top (clear of the name) or the bottom, spaced out, and
+        // a spot another edge already comes in at costs extra, so arrowheads don't pile onto one point
+        const along = (low, high, step) => {
+            const count = Math.max(1, Math.floor((high - low) / step))
+            return Array.from({ length: count + 1 }, (_, i) => low + ((high - low) * i) / count)
+        }
+        this.used ??= { h: new Map(), v: new Map(), ends: [] }
+        const taken = (end) => (this.used.ends.some((other) => Math.hypot(other.x - end.x, other.y - end.y) < 10) ? 150 : 0)
+        const offer = (goal) => goals.push({ ...goal, cost: goal.cost + taken({ x: goal.end.x ?? goal.x, y: goal.end.y ?? goal.y }) })
         if (!self) {
-            goals.push({ x: box.x - gap, y: clamp(lead.y, box.y + 7, box.y + box.h - 7), dir: 0, cost: 0, end: { x: box.x - 3 } })
+            for (const y of along(box.y + 8, box.y + box.h - 8, 14)) {
+                offer({ x: box.x - gap, y, dir: 0, cost: Math.abs(y - lead.y) * 0.2, end: { x: box.x - 3 } })
+            }
         }
         const topX = box.x + (toSize?.titleW ?? 0) + 24
-        if (topX < box.x + box.w - 8) {
-            goals.push({ x: self ? box.x + box.w - 12 : topX, y: box.y - gap, dir: 1, cost: 12, end: { y: box.y - 3 } })
+        for (const x of self ? [box.x + box.w - 12] : topX < box.x + box.w - 8 ? along(topX, box.x + box.w - 12, 16) : []) {
+            offer({ x, y: box.y - gap, dir: 1, cost: 12, end: { y: box.y - 3 } })
         }
-        goals.push({ x: box.x + box.w / 2, y: box.y + box.h + gap, dir: 3, cost: 12, end: { y: box.y + box.h + 3 } })
+        for (const x of self ? [box.x + box.w / 2] : along(box.x + 12, box.x + box.w - 12, 16)) {
+            offer({ x, y: box.y + box.h + gap, dir: 3, cost: 12, end: { y: box.y + box.h + 3 } })
+        }
         if (!self) {
-            goals.push({ x: box.x + box.w + gap, y: box.y + box.h - 7, dir: 2, cost: 90, end: { x: box.x + box.w + 3 } })
+            offer({ x: box.x + box.w + gap, y: box.y + box.h - 7, dir: 2, cost: 90, end: { x: box.x + box.w + 3 } })
         }
-        this.used ??= { h: new Map(), v: new Map() }
         const corners = route(lead, 0, goals, obstacles, region, this.used) ?? (held ? route(lead, 0, goals, obstacles, all, this.used) : null)
         if (!corners) {
             return null
         }
         const last = corners.at(-1)
         const goal = goals.find((one) => Math.abs(one.x - last.x) < 1 && Math.abs(one.y - last.y) < 1) ?? goals[0]
-        return [lead, ...corners.slice(1), { x: goal.end.x ?? last.x, y: goal.end.y ?? last.y }]
+        const end = { x: goal.end.x ?? last.x, y: goal.end.y ?? last.y }
+        this.used.ends.push(end)
+        return [lead, ...corners.slice(1), end]
     }
 
     /**
